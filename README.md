@@ -59,6 +59,27 @@ npm start
 
 首次启动会自动创建数据库与配置：`%APPDATA%\desktop-calendar\`
 
+## 下载 / 使用（给最终用户）
+
+> 这个仓库本身**只放源代码**（`dist/` 打包产物被 .gitignore 排除，体积大不适合进 git）。
+> 想直接拿到绿色版 exe，请走 **GitHub Releases**，不要 clone 本仓库。
+
+### 从 Releases 下载
+
+1. 打开仓库主页 → 点右侧 **Releases**（或 https://github.com/ljw1035/desktop-calendar/releases）
+2. 找到最新版本，在 **Assets** 下下载 `桌面日历-win32-x64.zip`（约 106MB）
+3. 解压后进入 `桌面日历-win32-x64/` 文件夹，**双击 `桌面日历.exe` 即可运行**，无需安装
+
+> Windows SmartScreen 可能提示「Windows 保护你的电脑 / 未知发布者」——本应用未做代码签名。
+> 点 **更多信息 → 仍要运行** 即可正常打开。
+
+### 全新打包后如何发布新版本
+
+```bash
+npm run pack              # 生成 dist/桌面日历-win32-x64/
+# 把该目录压成 zip（约 106MB），传到 GitHub Releases 作为新版本的 Assets
+```
+
 ## 打包
 
 ### 方案 A：离线绿色包（推荐）
