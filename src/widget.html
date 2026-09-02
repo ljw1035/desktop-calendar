@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>桌面日历</title>
+<link rel="stylesheet" href="widget.css" />
+</head>
+<body data-theme="glacier">
+  <!-- 顶部控件栏（仅 hover 时显示，方便移动 / 关闭 / 设参） -->
+  <header class="drag-bar" id="dragBar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span class="brand-text">桌面日历</span>
+    </div>
+    <div class="ctrl no-drag">
+      <button class="icon-btn" id="btnPrev" title="上一月">‹</button>
+      <button class="icon-btn" id="btnToday" title="回到今天">今天</button>
+      <button class="icon-btn" id="btnNext" title="下一月">›</button>
+      <span class="sep"></span>
+      <button class="icon-btn" id="btnSettings" title="设置">⚙</button>
+      <button class="icon-btn" id="btnToggle" title="鼠标穿透切换">🖱</button>
+      <button class="icon-btn" id="btnHide" title="隐藏小组件">─</button>
+      <button class="icon-btn" id="btnClose" title="关闭">✕</button>
+    </div>
+  </header>
+
+  <!-- 月份标题 -->
+  <section class="month-header">
+    <h1 id="monthTitle">2026 年 9 月</h1>
+    <div class="month-meta" id="monthMeta"></div>
+  </section>
+
+  <!-- 待办列表（仿图左上的玻璃卡片） -->
+  <section class="todos-card">
+    <ul id="todoList" class="todo-list"></ul>
+    <div class="todo-add no-drag">
+      <input id="todoInput" type="text" placeholder="+ 添加待办（回车保存）" maxlength="80" />
+    </div>
+  </section>
+
+  <!-- 月历主体 -->
+  <section class="calendar">
+    <div class="weekdays" id="weekdays"></div>
+    <div class="days" id="days"></div>
+  </section>
+
+  <!-- 当日详情（点击某天后展开） -->
+  <section class="day-detail" id="dayDetail" hidden>
+    <div class="day-detail-head">
+      <div>
+        <div class="day-detail-date" id="detailDate">—</div>
+        <div class="day-detail-lunar" id="detailLunar">—</div>
+      </div>
+      <div class="no-drag">
+        <button class="ghost-btn" id="btnAddSchedule">＋ 添加日程</button>
+        <button class="ghost-btn" id="btnCloseDetail">收起</button>
+      </div>
+    </div>
+    <ul class="schedule-list" id="scheduleList"></ul>
+  </section>
+
+  <!-- 添加/编辑日程的浮层 -->
+  <div class="modal-mask no-drag" id="scheduleModal" hidden>
+    <div class="modal">
+      <div class="modal-title" id="scheduleModalTitle">添加日程</div>
+      <label>标题</label>
+      <input id="fTitle" type="text" placeholder="例如：下午 4 点讨论需求" maxlength="60" />
+      <label>日期</label>
+      <input id="fDate" type="date" />
+      <div class="row">
+        <div>
+          <label>开始时间（可空）</label>
+          <input id="fStart" type="time" />
+        </div>
+        <div>
+          <label>结束时间（可空）</label>
+          <input id="fEnd" type="time" />
+        </div>
+      </div>
+      <label>重复</label>
+      <select id="fRepeat">
+        <option value="none">不重复</option>
+        <option value="daily">每天</option>
+        <option value="weekly">每周</option>
+        <option value="weekday">每个工作日</option>
+        <option value="monthly">每月</option>
+        <option value="yearly">每年</option>
+      </select>
+      <label>备注</label>
+      <textarea id="fNote" placeholder="可选" maxlength="200"></textarea>
+      <label>颜色</label>
+      <div class="color-row" id="colorRow">
+        <span data-c="#ff6b6b" class="active"></span>
+        <span data-c="#ffa94d"></span>
+        <span data-c="#ffd43b"></span>
+        <span data-c="#69db7c"></span>
+        <span data-c="#4dabf7"></span>
+        <span data-c="#9775fa"></span>
+        <span data-c="#f783ac"></span>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost-btn danger" id="btnDeleteSchedule" hidden>删除</button>
+        <div class="spacer"></div>
+        <button class="ghost-btn" id="btnCancelSchedule">取消</button>
+        <button class="primary-btn" id="btnSaveSchedule">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 无边框窗口边缘拖拽缩放手柄（8 个热区） -->
+  <div class="rz rz-n"  data-edge="n"></div>
+  <div class="rz rz-s"  data-edge="s"></div>
+  <div class="rz rz-e"  data-edge="e"></div>
+  <div class="rz rz-w"  data-edge="w"></div>
+  <div class="rz rz-ne" data-edge="ne"></div>
+  <div class="rz rz-nw" data-edge="nw"></div>
+  <div class="rz rz-se" data-edge="se"></div>
+  <div class="rz rz-sw" data-edge="sw"></div>
+
+  <script src="lunar.js"></script>
+  <script src="widget.js"></script>
+</body>
+</html>

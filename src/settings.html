@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>桌面日历 · 设置</title>
+<link rel="stylesheet" href="settings.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="title">桌面日历 · 设置</div>
+    <div class="hint">所有更改即时生效并自动保存</div>
+  </header>
+
+  <main class="layout">
+    <!-- 左：日程管理 -->
+    <section class="panel left">
+      <div class="panel-head">
+        <h2>日程管理</h2>
+        <div class="head-actions">
+          <button class="primary-btn" id="btnNewSchedule">+ 新建日程</button>
+        </div>
+      </div>
+
+      <div class="filter-row">
+        <input type="month" id="filterMonth" />
+        <input type="text" id="filterKeyword" placeholder="🔍 关键字筛选…" />
+        <select id="filterDone">
+          <option value="all">全部</option>
+          <option value="undone">未完成</option>
+          <option value="done">已完成</option>
+        </select>
+      </div>
+
+      <div class="schedule-table">
+        <div class="t-head">
+          <div>日期</div><div>时间</div><div>标题</div><div>状态</div><div></div>
+        </div>
+        <div id="scheduleRows" class="t-body"></div>
+      </div>
+
+      <div class="todo-section">
+        <h3>待办清单</h3>
+        <ul id="todoList" class="todo-list"></ul>
+        <div class="todo-add">
+          <input id="todoInput" type="text" placeholder="+ 添加待办（回车保存）" maxlength="80" />
+        </div>
+      </div>
+    </section>
+
+    <!-- 右：参数配置 -->
+    <section class="panel right">
+      <div class="panel-head"><h2>小组件设置</h2></div>
+
+      <div class="form-group">
+        <label>窗口透明度 <span id="opacityVal" class="value">92%</span></label>
+        <input type="range" id="opacity" min="30" max="100" step="1" />
+      </div>
+
+      <div class="form-group">
+        <label>窗口宽度 <span id="widthVal" class="value">760 px</span></label>
+        <input type="range" id="width" min="520" max="1100" step="20" />
+      </div>
+
+      <div class="form-group">
+        <label>窗口高度 <span id="heightVal" class="value">900 px</span></label>
+        <input type="range" id="height" min="600" max="1200" step="20" />
+      </div>
+
+      <div class="form-group toggles">
+        <label class="toggle">
+          <input type="checkbox" id="alwaysOnTop" />
+          <span>窗口置顶（始终显示在桌面前）</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="clickThrough" />
+          <span>鼠标穿透（勾选后小组件不接收鼠标，只能右键关闭）</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="showLunar" />
+          <span>显示农历/节日</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="showTodos" />
+          <span>显示顶部待办列表</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="startWithSystem" />
+          <span>开机自启动</span>
+        </label>
+      </div>
+
+      <div class="form-group">
+        <label>一周起始</label>
+        <div class="radio-row">
+          <label><input type="radio" name="weekStart" value="1"> 周一</label>
+          <label><input type="radio" name="weekStart" value="0"> 周日</label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>主题色</label>
+        <div class="theme-row">
+          <label class="theme-card" data-theme="glacier">
+            <input type="radio" name="theme" value="glacier" />
+            <span class="swatch" style="background:linear-gradient(135deg,#4dabf7,#69db7c)"></span>
+            <span>冰川蓝</span>
+          </label>
+          <label class="theme-card" data-theme="inkblot">
+            <input type="radio" name="theme" value="inkblot" />
+            <span class="swatch" style="background:linear-gradient(135deg,#5f3dc4,#e64980)"></span>
+            <span>墨染紫</span>
+          </label>
+          <label class="theme-card" data-theme="rose">
+            <input type="radio" name="theme" value="rose" />
+            <span class="swatch" style="background:linear-gradient(135deg,#ff8787,#ffa94d)"></span>
+            <span>日落橘</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="danger-zone">
+        <h3>危险操作</h3>
+        <button class="danger-btn" id="btnResetPos">重置小组件位置</button>
+        <button class="danger-btn" id="btnClearDone">清理所有已完成日程</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- 复用 widget 的浮层（创建/编辑日程） -->
+  <div class="modal-mask" id="scheduleModal" hidden>
+    <div class="modal">
+      <div class="modal-title" id="scheduleModalTitle">添加日程</div>
+      <label>标题</label>
+      <input id="fTitle" type="text" maxlength="60" />
+      <label>日期</label>
+      <input id="fDate" type="date" />
+      <div class="row">
+        <div>
+          <label>开始时间（可空）</label>
+          <input id="fStart" type="time" />
+        </div>
+        <div>
+          <label>结束时间（可空）</label>
+          <input id="fEnd" type="time" />
+        </div>
+      </div>
+      <label>重复</label>
+      <select id="fRepeat">
+        <option value="none">不重复</option>
+        <option value="daily">每天</option>
+        <option value="weekly">每周</option>
+        <option value="weekday">每个工作日</option>
+        <option value="monthly">每月</option>
+        <option value="yearly">每年</option>
+      </select>
+      <label>备注</label>
+      <textarea id="fNote" maxlength="200"></textarea>
+      <label>颜色</label>
+      <div class="color-row" id="colorRow">
+        <span data-c="#ff6b6b" class="active"></span>
+        <span data-c="#ffa94d"></span>
+        <span data-c="#ffd43b"></span>
+        <span data-c="#69db7c"></span>
+        <span data-c="#4dabf7"></span>
+        <span data-c="#9775fa"></span>
+        <span data-c="#f783ac"></span>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost-btn danger" id="btnDeleteSchedule" hidden>删除</button>
+        <div class="spacer"></div>
+        <button class="ghost-btn" id="btnCancelSchedule">取消</button>
+        <button class="primary-btn" id="btnSaveSchedule">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>

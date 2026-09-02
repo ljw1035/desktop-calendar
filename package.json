@@ -1,0 +1,74 @@
+{
+  "name": "desktop-calendar",
+  "version": "0.1.0",
+  "description": "桌面日历小组件 - 玻璃拟态月历 + 待办",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node scripts/start.js",
+    "dev": "node scripts/start.js -- --enable-logging",
+    "gen-icon": "node scripts/gen-icon.js",
+    "pack": "node scripts/pack.js",
+    "test": "node scripts/repeat.test.js && node scripts/css-hidden.test.js && node scripts/smoke-renderer.js",
+    "build": "node scripts/build.js",
+    "build:dir": "electron-builder --win --x64 --dir --publish never",
+    "open-data-dir": "explorer %APPDATA%\\desktop-calendar"
+  },
+  "keywords": [
+    "desktop-widget",
+    "calendar",
+    "glassmorphism",
+    "electron"
+  ],
+  "author": "ljw",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^26.15.3",
+    "jsdom": "^30.0.1"
+  },
+  "dependencies": {
+    "node-sqlite3-wasm": "^0.8.60"
+  },
+  "build": {
+    "appId": "com.ljw.desktop-calendar",
+    "productName": "桌面日历",
+    "copyright": "Copyright © 2026 ljw",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json",
+      "!**/*.md",
+      "!**/.DS_Store"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "signAndEditExecutable": false,
+      "signDlls": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "桌面日历"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "requestExecutionLevel": "user"
+    },
+    "asar": true
+  }
+}
