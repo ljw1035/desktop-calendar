@@ -265,21 +265,28 @@ function escapeAttr(s) { return escapeText(s).replace(/"/g, '&quot;'); }
 
 // ---------- 事件绑定 ----------
 function bindEvents() {
-  // 边缘拖拽缩放（无边框窗口）：按下手柄记录起点，mousemove 持续上报屏幕坐标
+  // 边缘拖拽缩放（无边框窗口）：按下手柄记录起点，pointermove 持续上报屏幕坐标。
+  // 用 setPointerCapture：即使拖出窗口外松手，pointerup 仍会送达，不会卡在缩放状态
   $$('.rz').forEach((el) => {
-    el.addEventListener('mousedown', (e) => {
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
       e.preventDefault();
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
       window.api.resize.start(el.dataset.edge, e.screenX, e.screenY);
       const onMove = (ev) => window.api.resize.move(ev.screenX, ev.screenY);
       const onUp = () => {
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup', onUp);
+        el.removeEventListener('pointermove', onMove);
+        el.removeEventListener('pointerup', onUp);
+        el.removeEventListener('pointercancel', onUp);
         window.api.resize.end();
       };
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup', onUp);
+      el.addEventListener('pointermove', onMove);
+      el.addEventListener('pointerup', onUp);
+      el.addEventListener('pointercancel', onUp);
     });
   });
+  // 保险：窗口失焦（如拖拽中弹窗/切窗）立即结束缩放
+  window.addEventListener('blur', () => window.api.resize.end());
 
   // 月份切换
   $('#btnPrev').addEventListener('click', () => moveMonth(-1));
