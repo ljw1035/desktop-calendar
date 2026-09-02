@@ -20,6 +20,13 @@ const { app, BrowserWindow, ipcMain, Tray, Menu, globalShortcut, screen, nativeI
 const path = require('path');
 const fs = require('fs');
 
+// ---------- 关键修复：透明窗口被遮挡后"看得见点不着" ----------
+// Windows 上 Chromium 的原生窗口遮挡追踪（NativeWindowOcclusionTracker）对透明窗口有误判：
+// 窗口被其他窗口盖过一次后可能被错误标记为"仍被遮挡"，于是停止渲染更新——
+// 屏幕上残留最后一帧（看起来一切正常），但所有鼠标事件被丢弃（点了没反应）。
+// 禁用该特性 + 后台节流，根治透明小组件"残影假死"问题。
+app.commandLine.appendSwitch('disable-features', 'NativeWindowOcclusionTracker,CalculateNativeWinOcclusion');
+
 const sqlite3 = require('node-sqlite3-wasm');
 const { Database } = sqlite3;
 
@@ -162,11 +169,17 @@ function createWidgetWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       devTools: true,
+      backgroundThrottling: false,   // 透明小组件：被遮挡时也不要节流渲染/输入
     },
   });
 
   widgetWin.setIgnoreMouseEvents(config.clickThrough, { forward: true });
   widgetWin.loadFile(path.join(APP_DIR, 'src', 'widget.html'));
+
+  // 被其他窗口盖过后重新显示时，主动回到最前，避免输入失效
+  widgetWin.on('show', () => {
+    if (!config.alwaysOnTop) widgetWin.moveTop();
+  });
 
   // 同步位置
   const saveBounds = () => {
