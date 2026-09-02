@@ -33,6 +33,16 @@ const api = {
       ipcRenderer.on('config:changed', fn);
       return () => ipcRenderer.removeListener('config:changed', fn);
     },
+    onShortcutOk: (cb) => {
+      const fn = (_e, acc) => cb(acc);
+      ipcRenderer.on('shortcut:ok', fn);
+      return () => ipcRenderer.removeListener('shortcut:ok', fn);
+    },
+    onShortcutError: (cb) => {
+      const fn = (_e, msg) => cb(msg);
+      ipcRenderer.on('shortcut:error', fn);
+      return () => ipcRenderer.removeListener('shortcut:error', fn);
+    },
   },
   data: {
     // 数据变化通知：日程/待办被任意窗口改动后广播

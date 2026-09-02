@@ -90,6 +90,18 @@
       </div>
 
       <div class="form-group">
+        <label>切换显示快捷键
+          <span class="shortcut-status" id="shortcutStatus" style="font-weight:400;">点击方框后按下新组合键</span>
+        </label>
+        <div class="shortcut-box">
+          <input type="text" id="shortcut" readonly autocomplete="off"
+                 placeholder="点击后按下快捷键…（Esc 取消）"
+                 title="点击后用键盘按下想设置的组合键" />
+          <button type="button" id="btnShortcutReset" class="mini-btn" title="恢复为默认 Ctrl+Shift+C">恢复默认</button>
+        </div>
+      </div>
+
+      <div class="form-group">
         <label>一周起始</label>
         <div class="radio-row">
           <label><input type="radio" name="weekStart" value="1"> 周一</label>
@@ -174,6 +186,7 @@
     </div>
   </div>
 
+  <script src="accelerator.js"></script>
   <script src="settings.js"></script>
 </body>
 </html>

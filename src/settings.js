@@ -14,6 +14,10 @@ const pad2 = (n) => String(n).padStart(2, '0');
 let editingId = null;
 let editingColor = '#ff6b6b';
 
+// 快捷键录制状态
+let shortcutRecording = false;
+let shortcutPendingAcc = null;   // 正在等待用户确认的组合（本地合法但尚未应用）
+
 // 给弹窗里"颜色"色板（#colorRow span[data-c]）一次性写入 inline background，
 // 避免 CSS 缺 background-color 导致 7 个圆点全透明。
 function initColorSwatches() {
@@ -45,10 +49,158 @@ async function loadConfigToUI() {
   $('#showLunar').checked    = cfg.showLunar !== false;
   $('#showTodos').checked    = cfg.showTodos !== false;
   $('#startWithSystem').checked = !!cfg.startWithSystem;
+  // 快捷键：输入框显示友好格式，data-acc 存真实 accelerator（供回退显示）
+  const sc = cfg.toggleShortcut || window.accelerator.DEFAULT_SHORTCUT;
+  $('#shortcut').value = window.accelerator.formatAccelerator(sc);
+  $('#shortcut').dataset.acc = sc;
+  setShortcutStatus('当前：' + window.accelerator.formatAccelerator(sc), '');
   $$('input[name="weekStart"]').forEach(r => r.checked = (Number(r.value) === (cfg.weekStartsOn ?? 1)));
   $$('input[name="theme"]').forEach(r => r.checked = (r.value === (cfg.theme || 'glacier')));
   $('#filterMonth').value = todayMonth();
   currentFilter.month = $('#filterMonth').value;
+}
+
+// ---------- 快捷键自定义 ----------
+function setShortcutStatus(text, type) {
+  // type: '' 普通 / 'ok' 成功 / 'err' 失败
+  const el = $('#shortcutStatus');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'shortcut-status' + (type ? ' ' + type : '');
+}
+
+// 从当前生效值刷新快捷键输入框（失败回滚后 / 加载时用）
+function syncShortcutFromConfig(cfg) {
+  const sc = (cfg && cfg.toggleShortcut) || window.accelerator.DEFAULT_SHORTCUT;
+  $('#shortcut').value = window.accelerator.formatAccelerator(sc);
+  $('#shortcut').dataset.acc = sc;
+}
+
+// 绑定快捷键录制交互
+function bindShortcutCapture() {
+  const input = $('#shortcut');
+
+  const exitRecord = () => {
+    shortcutRecording = false;
+    input.classList.remove('recording');
+    input.blur();
+    // 恢复显示当前生效值（本地可能已暂存 pending，但未应用 → 仍显生效值）
+    syncShortcutFromConfigCache();
+    setShortcutStatus('点击方框后按下新组合键', '');
+  };
+
+  input.addEventListener('click', () => {
+    shortcutRecording = true;
+    input.classList.add('recording');
+    input.value = '';
+    input.placeholder = '请按下组合键…';
+    setShortcutStatus('请按下新的组合键（只按修饰键则继续等待主键）', '');
+  });
+
+  input.addEventListener('blur', () => {
+    if (shortcutRecording) exitRecord();
+  });
+
+  input.addEventListener('keydown', async (e) => {
+    if (!shortcutRecording) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Esc 取消
+    if (e.code === 'Escape') { exitRecord(); return; }
+
+    const { accelerator, reason } = window.accelerator.keydownToAccelerator(e);
+    // 纯修饰键按下（未完成）→ 继续等主键，仅更新提示
+    if (!accelerator && !reason) {
+      input.value = '';
+      input.placeholder = window.accelerator.formatAccelerator(
+        [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Win']
+          .filter(Boolean).join('+')) + ' + …';
+      return;
+    }
+    // 本地非法（如单独字母、未知键）→ 留在录制，给提示，等下一个键
+    if (!accelerator) {
+      setShortcutStatus(reason || '该组合无效，请重试', 'err');
+      input.value = '';
+      input.placeholder = '请再按一次组合键…';
+      return;
+    }
+
+    // 本地合法：先显示出来，并尝试应用
+    shortcutPendingAcc = accelerator;
+    input.value = window.accelerator.formatAccelerator(accelerator);
+    input.placeholder = '点击方框后按下快捷键…';
+
+    // 交给主进程注册（阻塞等待）。结果由 shortcut:ok / shortcut:error 事件驱动收尾。
+    // 这里不清空 recording，避免 config:changed 在失败回滚前先把 UI 刷走。
+    shortcutPendingAcc = accelerator;
+    try {
+      await window.api.config.set({ toggleShortcut: accelerator });
+    } catch (err) {
+      shortcutRecording = false;
+      input.classList.remove('recording');
+      syncShortcutFromConfigCache();
+      setShortcutStatus('保存失败：' + (err && err.message), 'err');
+    }
+  });
+
+  // "恢复默认"按钮
+  $('#btnShortcutReset').addEventListener('click', async () => {
+    const d = window.accelerator.DEFAULT_SHORTCUT;
+    input.value = window.accelerator.formatAccelerator(d);
+    input.dataset.acc = d;
+    try {
+      await window.api.config.set({ toggleShortcut: d });
+    } catch (err) {
+      setShortcutStatus('保存失败：' + (err && err.message), 'err');
+    }
+  });
+
+  // 主进程回执：注册成功（无 error 时手动收尾）
+  // —— 用一个定时器 + pending 标记，在 config:set 返回后若未收到 shortcut:error 则视为成功
+  return input;
+}
+
+// 当前生效 config 缓存（供 syncShortcutFromConfigCache 使用）
+let cfgCache = null;
+function syncShortcutFromConfigCache() {
+  if (cfgCache) syncShortcutFromConfig(cfgCache);
+}
+
+// 绑定快捷键相关的主进程事件（成功/失败/外部变化）
+function bindShortcutEvents() {
+  const input = $('#shortcut');
+  // 任何 config 变化 → 同步输入框（含：主进程回滚后广播的 config）
+  window.api.config.onChange((cfg) => {
+    const prevAcc = cfgCache ? cfgCache.toggleShortcut : null;
+    cfgCache = cfg;
+    const changed = cfg.toggleShortcut !== prevAcc;
+    if (!shortcutRecording && changed) {
+      syncShortcutFromConfig(cfg);
+      setShortcutStatus('当前：' + window.accelerator.formatAccelerator(cfg.toggleShortcut || window.accelerator.DEFAULT_SHORTCUT), '');
+    }
+  });
+  // 快捷键注册失败（被回滚）：重新拉一次最新 config 回填输入框（最可靠）
+  window.api.config.onShortcutError(async (msg) => {
+    shortcutRecording = false;
+    input.classList.remove('recording');
+    shortcutPendingAcc = null;
+    const fresh = await window.api.config.get();
+    cfgCache = fresh;
+    syncShortcutFromConfig(fresh);
+    setShortcutStatus('⚠ ' + msg + '（已保留原快捷键）', 'err');
+  });
+  // 快捷键注册成功：直接用事件携带的 accelerator 刷新输入框（不依赖 cfgCache，解耦广播时序）
+  window.api.config.onShortcutOk((acc) => {
+    shortcutRecording = false;
+    shortcutPendingAcc = null;
+    input.classList.remove('recording');
+    input.value = window.accelerator.formatAccelerator(acc);
+    input.dataset.acc = acc;
+    // 同步本地缓存，避免后续依赖 cfgCache 的地方读到旧值
+    if (cfgCache) cfgCache = { ...cfgCache, toggleShortcut: acc };
+    setShortcutStatus('✓ 已生效：' + window.accelerator.formatAccelerator(acc), 'ok');
+  });
 }
 
 // ---------- 绑定：右侧配置 ----------
@@ -248,7 +400,10 @@ async function saveSchedule() {
 // ---------- 启动 ----------
 (async function init() {
   await loadConfigToUI();
+  cfgCache = await window.api.config.get();   // 缓存初始 config（快捷键失败回退/同步用）
   bindConfigEvents();
+  bindShortcutCapture();
+  bindShortcutEvents();
   initColorSwatches();
 
   // 过滤

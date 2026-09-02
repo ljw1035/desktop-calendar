@@ -8,7 +8,7 @@
     "dev": "node scripts/start.js -- --enable-logging",
     "gen-icon": "node scripts/gen-icon.js",
     "pack": "node scripts/pack.js",
-    "test": "node scripts/repeat.test.js && node scripts/css-hidden.test.js && node scripts/smoke-renderer.js",
+    "test": "node scripts/repeat.test.js && node scripts/accelerator.test.js && node scripts/css-hidden.test.js && node scripts/smoke-renderer.js",
     "build": "node scripts/build.js",
     "build:dir": "electron-builder --win --x64 --dir --publish never",
     "open-data-dir": "explorer %APPDATA%\\desktop-calendar"

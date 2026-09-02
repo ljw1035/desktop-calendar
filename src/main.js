@@ -132,6 +132,7 @@ const DEFAULT_CONFIG = {
   theme: 'glacier',              // glacier / inkblot / rose
   // 系统
   startWithSystem: false,
+  toggleShortcut: 'CommandOrControl+Shift+C',   // 全局快捷键：切换小组件显示/隐藏（可在设置自定义）
 };
 
 function loadConfig() {
@@ -516,8 +517,68 @@ ipcMain.handle('config:set', (_e, partial) => {
   // 主题变化时刷新托盘图标
   if ('theme' in partial && tray) tray.setImage(buildTrayIcon());
 
+  // 全局快捷键变化 → 重注册；失败则回滚并告知
+  let shortcutErr = null;
+  if ('toggleShortcut' in partial) {
+    const res = registerToggleShortcut();
+    if (res.ok) {
+      if (settingsWin && !settingsWin.isDestroyed()) {
+        settingsWin.webContents.send('shortcut:ok', config.toggleShortcut);
+      }
+    } else {
+      // 回滚到上一次成功注册的组合（无则回默认），保持应用可用
+      const fallback = toggleShortcutRegistered || 'CommandOrControl+Shift+C';
+      config.toggleShortcut = fallback;
+      saveConfig(config);
+      registerToggleShortcut();
+      shortcutErr = res.reason;
+    }
+  }
+
+  // 若快捷键注册失败：先广播回滚后的 config（更新渲染层缓存），再发错误提示
+  if (shortcutErr && settingsWin && !settingsWin.isDestroyed()) {
+    settingsWin.webContents.send('config:changed', config);
+    settingsWin.webContents.send('shortcut:error', shortcutErr);
+  }
+
   return config;
 });
+
+/**
+ * 注册"切换小组件显示/隐藏"的全局快捷键
+ * accelerator 取自 config.toggleShortcut（可在设置里自定义）。
+ * 返回 { ok, reason }：ok=true 注册成功；否则给出原因（键冲突/格式非法等）。
+ * 由于 Electron 的 accelerator 语法较严（必须含一个普通键，可带修饰符），
+ * 非法/无法注册的组合在这里统一拦截并回退到注册前的值，避免静默失效。
+ */
+let toggleShortcutRegistered = null;   // 当前实际注册成功的 accelerator
+
+function registerToggleShortcut() {
+  const acc = (config.toggleShortcut || '').trim();
+
+  // 先注销上一次注册成功的快捷键（避免换绑后旧键仍生效，造成两个都触发）
+  if (toggleShortcutRegistered) {
+    globalShortcut.unregister(toggleShortcutRegistered);
+    toggleShortcutRegistered = null;
+  }
+
+  // 空值/纯修饰符（缺普通键）一律不合法
+  if (!acc) {
+    return { ok: false, reason: '快捷键不能为空' };
+  }
+
+  const ok = globalShortcut.register(acc, () => {
+    if (!widgetWin) return createWidgetWindow();
+    if (widgetWin.isVisible()) widgetWin.hide(); else widgetWin.show();
+  });
+
+  if (ok) {
+    toggleShortcutRegistered = acc;
+    return { ok: true };
+  }
+  // 注册失败（可能被系统/其他应用占用，或格式不被 Electron 接受）
+  return { ok: false, reason: `无法注册快捷键 "${acc}"（可能被系统或其他程序占用）` };
+}
 
 /**
  * 同步开机自启动状态到系统
@@ -664,11 +725,8 @@ app.whenReady().then(() => {
   // 应用开机自启设置
   applyAutoStart();
 
-  // 全局快捷键：Ctrl+Shift+C 切换小组件显示
-  globalShortcut.register('CommandOrControl+Shift+C', () => {
-    if (!widgetWin) return createWidgetWindow();
-    if (widgetWin.isVisible()) widgetWin.hide(); else widgetWin.show();
-  });
+  // 全局快捷键：切换小组件显示/隐藏（accelerator 可在设置里自定义）
+  registerToggleShortcut();
 
   // 启动日程提醒轮询（每 30 秒检查一次）
   checkReminders();

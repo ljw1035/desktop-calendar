@@ -186,6 +186,45 @@ html, body {
 }
 .radio-row input { accent-color: var(--accent); }
 
+/* ===== 快捷键自定义 ===== */
+.shortcut-box { display: flex; gap: 8px; align-items: center; }
+.shortcut-box input {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--bg-soft);
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  color: var(--txt);
+  font-size: 13px;
+  font-family: "Consolas", "Menlo", monospace;
+  outline: none;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.shortcut-box input.recording {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(77,171,247,0.25);
+  color: var(--accent);
+}
+.shortcut-box input:hover:not(.recording) { border-color: var(--bd-strong); }
+.mini-btn {
+  padding: 8px 12px;
+  background: var(--bg-soft);
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  color: var(--txt-soft);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  white-space: nowrap;
+}
+.mini-btn:hover { background: var(--bg-panel); color: var(--txt); }
+.shortcut-status { color: var(--txt-faint); }
+.shortcut-status.ok  { color: var(--accent-2); }
+.shortcut-status.err { color: var(--danger); }
+
+
 .theme-row { display: flex; gap: 10px; }
 .theme-card {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;

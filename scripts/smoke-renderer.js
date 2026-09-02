@@ -36,6 +36,7 @@ const sampleConfig = {
   showLunar: true, showTodos: true, weekStartsOn: 1,
   theme: 'glacier', startWithSystem: false,
   alwaysOnTop: true, clickThrough: false,
+  toggleShortcut: 'CommandOrControl+Shift+C',
 };
 
 function makeApiStub(record) {
@@ -59,6 +60,8 @@ function makeApiStub(record) {
       get: async () => sampleConfig,
       set: async (p) => { record.configSets.push(p); },
       onChange: (cb) => { record.cbs.push('config.onChange'); record.handlers.config.push(cb); },
+      onShortcutOk: (cb) => { record.cbs.push('config.onShortcutOk'); record.handlers.shortcutOk.push(cb); },
+      onShortcutError: (cb) => { record.cbs.push('config.onShortcutError'); record.handlers.shortcutError.push(cb); },
     },
     data: { onChange: (cb) => { record.cbs.push('data.onChange'); record.handlers.data.push(cb); } },
     window: {
@@ -111,7 +114,7 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
     };
   }
 
-  const record = { cbs: [], configSets: [], handlers: { config: [], data: [], focus: [] } };
+  const record = { cbs: [], configSets: [], handlers: { config: [], data: [], focus: [], shortcutOk: [], shortcutError: [] } };
   window.api = makeApiStub(record);
 
   const loadErrors = [];
@@ -198,7 +201,7 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
     ];
   });
 
-  const b = await runCase('设置窗渲染', 'settings.html', ['settings.js'], (w) => {
+  const b = await runCase('设置窗渲染', 'settings.html', ['accelerator.js', 'settings.js'], (w) => {
     const d = w.document;
     const rows = d.querySelectorAll('#scheduleRows > *').length;
     const todos = d.querySelectorAll('#todoList > *').length;
@@ -207,12 +210,16 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
     const checks = ['alwaysOnTop', 'clickThrough', 'showLunar', 'showTodos', 'startWithSystem']
       .map((id) => `${id}=${d.querySelector('#' + id) ? d.querySelector('#' + id).checked : '?'}`)
       .join(' ');
+    // 快捷键输入框已回填为默认 Ctrl+Shift+C
+    const scInput = d.querySelector('#shortcut');
+    const scVal = scInput ? scInput.value : '(元素缺失)';
     return [
       { label: '日程表格已渲染（桩数据 2 条）', ok: rows === 2, detail: `实际 ${rows} 行` },
       { label: '待办已渲染（桩数据 2 条）', ok: todos === 2, detail: `实际 ${todos} 条` },
       { label: '透明度滑块已回填(92)', ok: op && Number(op.value) === 92, detail: `opacity=${op ? op.value : '?'}` },
       { label: '宽度滑块已回填(760)', ok: wd && Number(wd.value) === 760, detail: `width=${wd ? wd.value : '?'}` },
       { label: '开关状态已回填', ok: /alwaysOnTop=true/.test(checks) && /showLunar=true/.test(checks), detail: checks },
+      { label: '快捷键输入框已回填(Ctrl+Shift+C)', ok: scVal === 'Ctrl+Shift+C', detail: `shortcut=${scVal}` },
     ];
   });
 
@@ -283,6 +290,29 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
   console.log(`  重复规则默认值         : ${sRep}（期望 none）`);
   console.log(`  结果                   : ${sRepOk ? 'PASS' : 'FAIL'}`);
 
+  // ---------- 交互模拟：自定义切换快捷键录制 ----------
+  console.log('\n=== 交互模拟：录制新的切换快捷键 ===');
+  const sInput = sdoc.querySelector('#shortcut');
+  const before = b.record.configSets.length;
+  sInput.click();                                  // 进入录制
+  // 派发 Ctrl+Shift+K（按物理键位 KeyK）
+  sInput.dispatchEvent(new b.window.KeyboardEvent('keydown', {
+    code: 'KeyK', key: 'k', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true,
+  }));
+  await new Promise((r) => setTimeout(r, 120));
+  const setCalled = b.record.configSets.slice(before).some(p => p && p.toggleShortcut === 'CommandOrControl+Shift+K');
+  // 主进程回执成功 → 触发 onShortcutOk 处理器
+  b.record.handlers.shortcutOk.forEach((cb) => cb('CommandOrControl+Shift+K'));
+  await new Promise((r) => setTimeout(r, 120));
+  const scShown = sdoc.querySelector('#shortcut').value;
+  const statusEl = sdoc.querySelector('#shortcutStatus');
+  const okShown = statusEl && /已生效/.test(statusEl.textContent);
+  const recOk = setCalled && scShown === 'Ctrl+Shift+K' && okShown;
+  console.log(`  config.set 收到 toggleShortcut : ${setCalled}`);
+  console.log(`  ok 后输入框显示              : ${scShown}（期望 Ctrl+Shift+K）`);
+  console.log(`  状态提示                      : ${statusEl ? statusEl.textContent : '(缺失)'}`);
+  console.log(`  结果                          : ${recOk ? 'PASS（快捷键录制可用）' : 'FAIL'}`);
+
   await new Promise((r) => setTimeout(r, 200));
 
   console.log('\n=== 汇总 ===');
@@ -290,7 +320,7 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
     console.log('未处理的 Promise 拒绝：');
     unhandled.forEach((u) => console.log('  ✗ ' + u));
   }
-  const allOk = a.ok && b.ok && toggleOk && repOk && sRepOk && unhandled.length === 0;
+  const allOk = a.ok && b.ok && toggleOk && repOk && sRepOk && recOk && unhandled.length === 0;
   console.log(allOk ? '渲染层冒烟测试通过 ✓' : '渲染层冒烟测试发现问题 ✗');
   process.exit(allOk ? 0 : 1);
 })();
