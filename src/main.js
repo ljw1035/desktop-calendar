@@ -187,7 +187,7 @@ function createWidgetWindow() {
     },
   });
 
-  widgetWin.setIgnoreMouseEvents(config.clickThrough, { forward: true });
+  widgetWin.setIgnoreMouseEvents(config.clickThrough, { forward: config.clickThrough });
   widgetWin.loadFile(path.join(APP_DIR, 'src', 'widget.html'));
 
   // 被其他窗口盖过后重新显示时，主动回到最前，避免输入失效
@@ -301,12 +301,12 @@ function createTray() {
     { type: 'separator' },
     { label: '打开设置', click: () => createSettingsWindow() },
     {
-      label: '穿透模式（右键关闭）',
+      label: '穿透模式（点击关闭）',
       type: 'checkbox',
       checked: config.clickThrough,
       click: (item) => {
         config.clickThrough = item.checked;
-        if (widgetWin) widgetWin.setIgnoreMouseEvents(config.clickThrough, { forward: true });
+        if (widgetWin) widgetWin.setIgnoreMouseEvents(config.clickThrough, { forward: !config.clickThrough });
         saveConfig(config);
       },
     },
@@ -483,7 +483,7 @@ ipcMain.handle('config:set', (_e, partial) => {
   if (widgetWin) {
     if (partial.opacity !== undefined) widgetWin.setOpacity(partial.opacity);
     if (partial.alwaysOnTop !== undefined) widgetWin.setAlwaysOnTop(!!partial.alwaysOnTop);
-    if (partial.clickThrough !== undefined) widgetWin.setIgnoreMouseEvents(!!partial.clickThrough, { forward: true });
+    if (partial.clickThrough !== undefined) widgetWin.setIgnoreMouseEvents(!!partial.clickThrough, { forward: !partial.clickThrough });
     // 重置位置：x/y 传 null 时立即移回屏幕右上角默认位置
     if (partial.x === null || partial.y === null) {
       const display = screen.getPrimaryDisplay().workArea;

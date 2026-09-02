@@ -302,6 +302,11 @@ html, body {
   color: var(--accent); background: rgba(77,171,247,0.15);
   border-radius: 999px; padding: 1px 5px; margin-left: 2px;
 }
+.occ-count {
+  display: inline-block; font-size: 10px; line-height: 1;
+  color: var(--txt-soft); background: rgba(255,255,255,0.08);
+  border-radius: 999px; padding: 1px 5px; margin-left: 2px;
+}
 .modal textarea { min-height: 50px; resize: vertical; }
 .modal .row { display: flex; gap: 10px; }
 .modal .row > div { flex: 1; }

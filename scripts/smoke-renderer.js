@@ -26,6 +26,11 @@ const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate
 const sampleSchedules = [
   { id: 1, title: '示例日程 A', note: '', date: today, start_time: '09:00', end_time: '10:00', color: '#ff7a59', done: 0, repeat: 'weekly', occurrenceDate: today, isRecurring: true },
   { id: 2, title: '示例日程 B', note: '带备注', date: today, start_time: '', end_time: '', color: '#5b8def', done: 1, repeat: 'none', occurrenceDate: today, isRecurring: false },
+  { id: 3, title: '背单词', note: '', date: today, start_time: '', end_time: '', color: '#ff6b6b', done: 0, repeat: 'daily', occurrenceDate: '2026-09-01', isRecurring: true },
+  { id: 3, title: '背单词', note: '', date: today, start_time: '', end_time: '', color: '#ff6b6b', done: 0, repeat: 'daily', occurrenceDate: '2026-09-02', isRecurring: true },
+  { id: 3, title: '背单词', note: '', date: today, start_time: '', end_time: '', color: '#ff6b6b', done: 0, repeat: 'daily', occurrenceDate: '2026-09-03', isRecurring: true },
+  { id: 3, title: '背单词', note: '', date: today, start_time: '', end_time: '', color: '#ff6b6b', done: 0, repeat: 'daily', occurrenceDate: '2026-09-04', isRecurring: true },
+  { id: 3, title: '背单词', note: '', date: today, start_time: '', end_time: '', color: '#ff6b6b', done: 0, repeat: 'daily', occurrenceDate: '2026-09-05', isRecurring: true },
 ];
 const sampleTodos = [
   { id: 1, content: '示例待办 1', done: 0 },
@@ -214,7 +219,7 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
     const scInput = d.querySelector('#shortcut');
     const scVal = scInput ? scInput.value : '(元素缺失)';
     return [
-      { label: '日程表格已渲染（桩数据 2 条）', ok: rows === 2, detail: `实际 ${rows} 行` },
+      { label: '日程表格已渲染（桩数据：3 条日程，daily 5 个 occurrence 已合并）', ok: rows === 3, detail: `实际 ${rows} 行` },
       { label: '待办已渲染（桩数据 2 条）', ok: todos === 2, detail: `实际 ${todos} 条` },
       { label: '透明度滑块已回填(92)', ok: op && Number(op.value) === 92, detail: `opacity=${op ? op.value : '?'}` },
       { label: '宽度滑块已回填(760)', ok: wd && Number(wd.value) === 760, detail: `width=${wd ? wd.value : '?'}` },
@@ -289,6 +294,40 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
   console.log(`  设置窗弹窗可打开       : ${!!sModalOpen}`);
   console.log(`  重复规则默认值         : ${sRep}（期望 none）`);
   console.log(`  结果                   : ${sRepOk ? 'PASS' : 'FAIL'}`);
+  sdoc.querySelector('#btnCancelSchedule').click();
+
+  // ---------- 交互模拟：日程去重（重复日程同 id 合并 + 显示出现次数） ----------
+  console.log('\n=== 交互模拟：日程去重（重复日程合并 + 出现次数）===');
+  await new Promise((r) => setTimeout(r, 100));
+  const sRows = Array.from(sdoc.querySelectorAll('#scheduleRows .t-row'));
+  const titles = sRows.map((r) => r.querySelector('.title-cell').textContent.trim());
+  const hasCountBadge = (id) => sRows.some((r) => Number(r.dataset.id) === id && /\u00d7\d+/.test(r.textContent));
+  // 期望：3 行（A: 1 次 / B: 1 次 / 背单词: ×5）
+  const titleSet = titles.slice().sort().join('|');
+  const dedupeOk = sRows.length === 3 && /背单词/.test(titleSet) && /示例日程 A/.test(titleSet) && /示例日程 B/.test(titleSet)
+                   && hasCountBadge(3) && !hasCountBadge(1) && !hasCountBadge(2);
+  console.log(`  渲染行数               : ${sRows.length}（期望 3：daily 5 个 occurrence 已合并为 1 行）`);
+  console.log(`  标题列表               : ${JSON.stringify(titles)}`);
+  console.log(`  背单词含 ×N 标记        : ${hasCountBadge(3)}`);
+  console.log(`  非重复日程无 ×N 标记    : ${!hasCountBadge(1) && !hasCountBadge(2)}`);
+  console.log(`  结果                   : ${dedupeOk ? 'PASS（合并 + 计数正常）' : 'FAIL（重复日程未合并或标记丢失）'}`);
+
+  // ---------- 交互模拟：穿透模式左键退出（替换旧右键方案） ----------
+  console.log('\n=== 交互模拟：穿透模式点击 widget 任意位置退出 ===');
+  const wdoc2 = a.window.document;
+  // 把 config 切到 clickThrough=true，再触发 mousedown，验证会调用 config.set({ clickThrough: false })
+  a.record.handlers.config.forEach((cb) => cb({ ...sampleConfig, clickThrough: true }));
+  await new Promise((r) => setTimeout(r, 100));
+  const beforeToggle = a.record.configSets.length;
+  const md = new a.window.MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+  wdoc2.dispatchEvent(md);
+  await new Promise((r) => setTimeout(r, 100));
+  const toggleCalls = a.record.configSets.slice(beforeToggle);
+  const exitCalled = toggleCalls.some((p) => p && p.clickThrough === false);
+  console.log(`  穿透状态下触发 mousedown : ${!!md}`);
+  console.log(`  config.set 调用次数       : ${toggleCalls.length}`);
+  console.log(`  包含 clickThrough=false   : ${exitCalled}`);
+  console.log(`  结果                      : ${exitCalled ? 'PASS（穿透左键可退出）' : 'FAIL（点击未触发退出）'}`);
 
   // ---------- 交互模拟：自定义切换快捷键录制 ----------
   console.log('\n=== 交互模拟：录制新的切换快捷键 ===');
@@ -320,7 +359,7 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
     console.log('未处理的 Promise 拒绝：');
     unhandled.forEach((u) => console.log('  ✗ ' + u));
   }
-  const allOk = a.ok && b.ok && toggleOk && repOk && sRepOk && recOk && unhandled.length === 0;
+  const allOk = a.ok && b.ok && toggleOk && repOk && sRepOk && dedupeOk && exitCalled && recOk && unhandled.length === 0;
   console.log(allOk ? '渲染层冒烟测试通过 ✓' : '渲染层冒烟测试发现问题 ✗');
   process.exit(allOk ? 0 : 1);
 })();

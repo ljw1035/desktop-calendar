@@ -289,14 +289,39 @@ async function renderSchedules() {
     return true;
   });
 
-  const html = filtered.length === 0
+  // 重复日程按 id 合并：同一规则在本月只显示一行，附"共 N 次出现"标记，避免列表被 daily 撑爆。
+  // 非重复日程每条独立显示。
+  const merged = [];
+  const seenRecurring = new Map();   // id → 在 merged 里的索引
+  for (const s of filtered) {
+    const isRec = s.isRecurring || (s.repeat && s.repeat !== 'none');
+    if (isRec) {
+      if (seenRecurring.has(s.id)) {
+        const idx = seenRecurring.get(s.id);
+        merged[idx].occCount += 1;
+        merged[idx].occDates.push(s.occurrenceDate);
+        continue;
+      }
+      seenRecurring.set(s.id, merged.length);
+      merged.push({ ...s, occCount: 1, occDates: [s.occurrenceDate] });
+    } else {
+      merged.push({ ...s, occCount: 1, occDates: [s.occurrenceDate] });
+    }
+  }
+
+  const html = merged.length === 0
     ? `<div class="t-row"><div></div><div></div><div style="color:var(--txt-faint);">暂无日程</div><div></div><div></div></div>`
-    : filtered.map(s => {
+    : merged.map(s => {
+        const isRec = s.isRecurring || (s.repeat && s.repeat !== 'none');
         const time = s.start_time
           ? `${s.start_time}${s.end_time ? '-' + s.end_time : ''}`
           : '全天';
+        // 重复日程：日期格显示范围（如 09-01 ~ 09-05），附出现次数
+        const dateCell = isRec && s.occCount > 1
+          ? `<span title="本月共 ${s.occCount} 次出现">${escapeText(s.occDates[0])} ~ ${escapeText(s.occDates[s.occDates.length - 1])} <span class="occ-count">×${s.occCount}</span></span>`
+          : `${escapeText(s.occurrenceDate || s.date)}${isRec ? ' <span class="repeat-badge" title="重复日程">↻</span>' : ''}`;
         return `<div class="t-row ${s.done ? 'done' : ''}" data-id="${s.id}" data-occ="${s.occurrenceDate || s.date}">
-          <div>${escapeText(s.date)}${s.isRecurring || (s.repeat && s.repeat !== 'none') ? ' <span class="repeat-badge" title="重复日程">↻</span>' : ''}</div>
+          <div>${dateCell}</div>
           <div>${escapeText(time)}</div>
           <div class="title-cell" style="${s.color ? `--accent:${s.color}` : ''}">
             ${escapeText(s.title)}${s.note ? `<span style="color:var(--txt-faint);font-size:11px;margin-left:6px;">${escapeText(s.note)}</span>` : ''}

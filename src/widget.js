@@ -322,12 +322,27 @@ function bindEvents() {
     const cfg = await window.api.config.get();
     const next = !cfg.clickThrough;
     await window.api.config.set({ clickThrough: next });
-    showHint(next ? '已开启鼠标穿透（右键退出）' : '已关闭鼠标穿透');
+    showHint(next ? '已开启鼠标穿透（点击小组件任意位置关闭）' : '已关闭鼠标穿透');
   });
   $('#btnHide').addEventListener('click', () => window.api.window.hide());
   $('#btnClose').addEventListener('click', () => window.api.window.close());
 
   // 待办新增入口已迁到设置窗（widget 端的 #todoInput 已删除，避免与设置窗重复导致状态不一致）
+
+  // 穿透模式：任意点击（包括左键、右键、中键）都退出穿透。鼠标穿透 + { forward:false } 时
+  // webContents 仍能收到 mousedown/mouseup，渲染层在这里拦截第一个事件并退出穿透；
+  // 右键（contextmenu）默认行为是被屏蔽的（prepend 到 OS 系统菜单），改由左键接管更直觉。
+  const exitClickThrough = async (e) => {
+    if (!state.config || !state.config.clickThrough) return;
+    e.preventDefault();
+    e.stopPropagation();
+    await window.api.config.set({ clickThrough: false });
+    showHint('已退出鼠标穿透');
+  };
+  window.addEventListener('mousedown', exitClickThrough, true);   // capture: 早于其他监听器
+  window.addEventListener('contextmenu', (e) => {
+    if (state.config && state.config.clickThrough) e.preventDefault();
+  });
 
   // 详情
   $('#btnAddSchedule').addEventListener('click', () => openScheduleModal(state.selected));
