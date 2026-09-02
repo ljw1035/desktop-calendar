@@ -27,6 +27,19 @@ const fs = require('fs');
 // 禁用该特性 + 后台节流，根治透明小组件"残影假死"问题。
 app.commandLine.appendSwitch('disable-features', 'NativeWindowOcclusionTracker,CalculateNativeWinOcclusion');
 
+// ---------- 单实例锁：防止重复双击把内存翻倍叠加 ----------
+// 用户可能误双击多次或从托盘/快捷方式重复拉起；没锁的话会开多个 Electron 实例，
+// 每实例自带一套 Chromium 进程（主+GPU+渲染≈100M），内存直接翻倍。
+// 加锁后：第二个实例启动会拿到锁失败 → 自动退出并把焦点还给已运行实例。
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (widgetWin) { if (widgetWin.isMinimized()) widgetWin.restore(); widgetWin.show(); widgetWin.focus(); }
+  });
+}
+
 const sqlite3 = require('node-sqlite3-wasm');
 const { Database } = sqlite3;
 
@@ -660,7 +673,29 @@ app.whenReady().then(() => {
   // 启动日程提醒轮询（每 30 秒检查一次）
   checkReminders();
   notifyTimer = setInterval(checkReminders, 30 * 1000);
+
+  // 内存诊断：启动后延迟几秒（等渲染进程稳定），打印各进程占用，便于真机核对
+  setTimeout(() => printMemoryMetrics(), 4000);
 });
+
+/**
+ * 打印当前各进程的内存占用（MB）。用于诊断 Electron 运行时内存构成。
+ * 真机查看方式：打包版跑起来后用任务管理器；开发模式控制台或 --enable-logging。
+ */
+function printMemoryMetrics() {
+  try {
+    const rows = app.getAppMetrics().map((m) => {
+      const name = (m.type || m.name || '?').padEnd(12);
+      const mb = (m.memory ? m.memory.workingSetSize : 0) / 1024 / 1024;
+      return `  ${name} ${mb.toFixed(1)} MB`;
+    });
+    const total = app.getAppMetrics().reduce((s, m) => s + ((m.memory ? m.memory.workingSetSize : 0) / 1024 / 1024), 0);
+    console.log(`[mem] === 进程内存构成（合计 ${total.toFixed(0)} MB）===`);
+    console.log('[mem]' + rows.join('\n[mem]'));
+  } catch (e) {
+    console.log('[mem] 无法读取指标：', e && e.message);
+  }
+}
 
 app.on('window-all-closed', (e) => {
   // 不要退出，托盘要保留

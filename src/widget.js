@@ -91,7 +91,7 @@ async function renderCalendar() {
     (byDate[s.occurrenceDate] ||= []).push(s);
   }
 
-  // 构建 42 个格子（6 行 × 7 列）
+  // 构建格子：上月填充 → 当月 → 补到当月所需最小行数（4/5 行，不塞 6 行的下月透明填充）
   const cells = [];
   // 上月填充
   for (let i = 0; i < firstWeekday; i++) {

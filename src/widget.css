@@ -158,17 +158,6 @@ body {
 }
 .todo-item:hover .todo-del { opacity: 1; }
 .todo-del:hover { color: #ff6b6b; }
-.todo-add { margin-top: 6px; }
-.todo-add input {
-  width: 100%; padding: 6px 10px;
-  background: rgba(255,255,255,0.04);
-  border: 1px dashed var(--bd-glass);
-  border-radius: 8px; color: var(--txt);
-  font-size: 12px; outline: none;
-  transition: border .15s, background .15s;
-}
-.todo-add input:focus { border-color: var(--bd-glass-strong); background: var(--bg-glass-hover); }
-.todo-add input::placeholder { color: var(--txt-faint); }
 
 /* ========== 月历 ========== */
 .calendar {
