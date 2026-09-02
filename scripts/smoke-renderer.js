@@ -50,10 +50,10 @@ function makeApiStub(record) {
       onFocus: (cb) => { record.cbs.push('schedule.onFocus'); record.handlers.focus.push(cb); },
     },
     todo: {
-      list: async () => sampleTodos,
-      create: async (d) => ({ id: 99, ...d }),
-      update: async (d) => d,
-      remove: async () => ({}),
+      list: async () => sampleTodos.slice(),
+      create: async (d) => { sampleTodos.push({ id: 99, done: 0, ...d }); return { id: 99, ...d }; },
+      update: async (d) => { const i = sampleTodos.findIndex(t => t.id === d.id); if (i >= 0) sampleTodos[i] = { ...sampleTodos[i], ...d }; return d; },
+      remove: async (id) => { const i = sampleTodos.findIndex(t => t.id === id); if (i >= 0) sampleTodos.splice(i, 1); return {}; },
     },
     config: {
       get: async () => sampleConfig,
@@ -183,6 +183,9 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
     // 色板已渲染 inline 背景（每个 span 应有非空 backgroundColor），否则视为渲染异常
     const swatches = Array.from(d.querySelectorAll('#colorRow span'));
     const swatchesRendered = swatches.length > 0 && swatches.every(s => s.style.backgroundColor && s.style.backgroundColor !== 'rgba(0, 0, 0, 0)' && s.style.backgroundColor !== 'transparent');
+    // 待办输入框已删除（新增入口迁到设置窗）；2 条待办时整张卡片应可见
+    const todoInputGone = !d.querySelector('#todoInput');
+    const todoCardVisible = d.querySelector('.todos-card') && !d.querySelector('.todos-card').hidden;
     return [
       { label: '日历格子已渲染', ok: days >= 28 && days % 7 === 0 && days <= 35, detail: `#days 有 ${days} 个格子（期望 28 或 35，最小行数无下月透明行）` },
       { label: '星期表头 7 个', ok: week === 7, detail: `实际 ${week} 个` },
@@ -190,6 +193,8 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
       { label: '月份标题已填充', ok: title.length > 0, detail: JSON.stringify(title) },
       { label: '农历/节日信息已填充', ok: meta.length > 0, detail: JSON.stringify(meta.slice(0, 40)) },
       { label: '颜色色板已渲染 inline 背景', ok: swatchesRendered, detail: swatchesRendered ? `7 个色板背景色均已写入` : `渲染异常，可能仍是透明状态` },
+      { label: 'widget 端 #todoInput 已移除', ok: todoInputGone, detail: todoInputGone ? '新增入口已迁到设置窗' : '#todoInput 仍在 widget 中' },
+      { label: '待办卡片可见（有数据时）', ok: todoCardVisible, detail: todoCardVisible ? '.todos-card 可见' : '.todos-card 被意外隐藏' },
     ];
   });
 
@@ -249,6 +254,22 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
   console.log(`  详情列表条数           : ${detailItems.length}`);
   console.log(`  每条 --accent           : ${JSON.stringify(detailColors)}`);
   console.log(`  结果                   : ${detailColorOk ? 'PASS（详情列表颜色按日程颜色渲染）' : 'FAIL（详情列表颜色未读取）'}`);
+
+  // ---------- 交互模拟：待办为空时整张卡片隐藏（回归：避免出现"暂无待办"的空玻璃盒） ----------
+  console.log('\n=== 交互模拟：待办为空时整张卡片隐藏 ===');
+  const delBtns = Array.from(wdoc.querySelectorAll('#todoList .todo-del'));
+  for (const b2 of delBtns) b2.click();
+  await new Promise((r) => setTimeout(r, 100));
+  const cardHidden = wdoc.querySelector('.todos-card') && wdoc.querySelector('.todos-card').hidden;
+  const noInput = !wdoc.querySelector('#todoInput');
+  const noPlaceholder = !(wdoc.querySelector('#todoList') && /暂无待办/.test(wdoc.querySelector('#todoList').textContent));
+  const remaining = wdoc.querySelectorAll('#todoList > *').length;
+  const emptyOk = !!cardHidden && noInput && noPlaceholder && remaining === 0;
+  console.log(`  .todos-card hidden      : ${!!cardHidden}`);
+  console.log(`  #todoInput 已移除        : ${noInput}`);
+  console.log(`  列表中"暂无待办"文案     : ${noPlaceholder ? '已清除' : '仍在'}`);
+  console.log(`  剩余 todo-item           : ${remaining}`);
+  console.log(`  结果                   : ${emptyOk ? 'PASS（空待办卡片自动隐藏）' : 'FAIL'}`);
 
   // ---------- 交互模拟：设置窗新建日程弹窗 ----------
   console.log('\n=== 交互模拟：设置窗新建日程弹窗 ===');

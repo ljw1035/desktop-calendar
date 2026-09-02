@@ -247,13 +247,21 @@ function closeScheduleModal() {
 // ---------- 待办 ----------
 async function renderTodos() {
   const todos = await window.api.todo.list();
+  // 列表为空时整张待办卡片隐藏（避免出现"什么都没有"的玻璃空盒）；
+  // 新增入口已迁到设置窗，widget 端只读渲染。
+  if (todos.length === 0) {
+    $('#todoList').innerHTML = '';
+    $('.todos-card').hidden = true;
+    return;
+  }
+  $('.todos-card').hidden = false;
   $('#todoList').innerHTML = todos.map(t => `
     <li class="todo-item ${t.done ? 'done' : ''}" data-id="${t.id}">
       <span class="todo-check" data-act="toggle">✓</span>
       <span class="todo-text">${escapeText(t.content)}</span>
       <button class="todo-del" data-act="del" title="删除">✕</button>
     </li>
-  `).join('') || '<li style="color:var(--txt-faint);font-size:12px;padding:6px;">暂无待办，输入内容回车添加</li>';
+  `).join('');
 
   $$('#todoList .todo-item').forEach(el => {
     const id = Number(el.dataset.id);
@@ -319,14 +327,7 @@ function bindEvents() {
   $('#btnHide').addEventListener('click', () => window.api.window.hide());
   $('#btnClose').addEventListener('click', () => window.api.window.close());
 
-  // 待办输入
-  $('#todoInput').addEventListener('keydown', async (e) => {
-    if (e.key === 'Enter' && e.target.value.trim()) {
-      await window.api.todo.create(e.target.value.trim());
-      e.target.value = '';
-      renderTodos();
-    }
-  });
+  // 待办新增入口已迁到设置窗（widget 端的 #todoInput 已删除，避免与设置窗重复导致状态不一致）
 
   // 详情
   $('#btnAddSchedule').addEventListener('click', () => openScheduleModal(state.selected));
