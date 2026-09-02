@@ -104,8 +104,10 @@ async function renderCalendar() {
   for (let d = 1; d <= daysInMonth; d++) {
     cells.push({ y: year, m: month, d, otherMonth: false });
   }
-  // 下月填充到 42
-  while (cells.length < 42) {
+  // 填充到当月所需的最小行数（一般 5 行，少数情况 4 行）
+  // 删掉之前"硬塞 42 格"产生的下月透明填充行，那行日期对用户没用又占视觉空间
+  const minCells = Math.ceil((firstWeekday + daysInMonth) / 7) * 7;
+  while (cells.length < minCells) {
     const last = cells[cells.length - 1];
     let ny = last.y, nm = last.m, nd = last.d + 1;
     if (nd > new Date(ny, nm, 0).getDate()) { nd = 1; nm++; if (nm > 12) { nm = 1; ny++; } }
@@ -182,7 +184,7 @@ async function renderDayDetail() {
         const time = s.start_time
           ? `${s.start_time}${s.end_time ? '-' + s.end_time : ''}`
           : '全天';
-        return `<li class="schedule-item ${s.done ? 'done' : ''}" data-id="${s.id}" data-occ="${s.occurrenceDate || s.date}">
+        return `<li class="schedule-item ${s.done ? 'done' : ''}" data-id="${s.id}" data-occ="${s.occurrenceDate || s.date}" style="${s.color ? `--accent:${s.color}` : ''}">
           <div class="schedule-time">${escapeText(time)}${s.isRecurring || (s.repeat && s.repeat !== 'none') ? ' <span class="repeat-badge" title="重复日程">↻</span>' : ''}</div>
           <div class="schedule-title">${escapeText(s.title)}${s.note ? `<span style="color:var(--txt-faint);font-size:11px;margin-left:6px;">${escapeText(s.note)}</span>` : ''}</div>
           <div class="schedule-actions">

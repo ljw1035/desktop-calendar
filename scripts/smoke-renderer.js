@@ -180,12 +180,16 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
     const todos = d.querySelectorAll('#todoList > *').length;
     const title = ((d.querySelector('#monthTitle') || {}).textContent || '').trim();
     const meta = ((d.querySelector('#monthMeta') || {}).textContent || '').trim();
+    // 色板已渲染 inline 背景（每个 span 应有非空 backgroundColor），否则视为渲染异常
+    const swatches = Array.from(d.querySelectorAll('#colorRow span'));
+    const swatchesRendered = swatches.length > 0 && swatches.every(s => s.style.backgroundColor && s.style.backgroundColor !== 'rgba(0, 0, 0, 0)' && s.style.backgroundColor !== 'transparent');
     return [
-      { label: '日历格子已渲染', ok: days >= 28, detail: `#days 有 ${days} 个格子` },
+      { label: '日历格子已渲染', ok: days >= 28 && days % 7 === 0 && days <= 35, detail: `#days 有 ${days} 个格子（期望 28 或 35，最小行数无下月透明行）` },
       { label: '星期表头 7 个', ok: week === 7, detail: `实际 ${week} 个` },
       { label: '待办已渲染（桩数据 2 条）', ok: todos === 2, detail: `实际 ${todos} 条` },
       { label: '月份标题已填充', ok: title.length > 0, detail: JSON.stringify(title) },
       { label: '农历/节日信息已填充', ok: meta.length > 0, detail: JSON.stringify(meta.slice(0, 40)) },
+      { label: '颜色色板已渲染 inline 背景', ok: swatchesRendered, detail: swatchesRendered ? `7 个色板背景色均已写入` : `渲染异常，可能仍是透明状态` },
     ];
   });
 
@@ -236,6 +240,15 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
   console.log(`  新建时重复规则默认值   : ${repNew}（期望 none）`);
   console.log(`  编辑时重复规则回填     : ${repEdit}（期望 weekly）`);
   console.log(`  结果                   : ${repOk ? 'PASS（弹窗与回填正常）' : 'FAIL'}`);
+
+  // ---------- 交互模拟：日程详情列表的色板按各自颜色渲染（回归：之前只改日历格子色，详情列表仍红） ----------
+  console.log('\n=== 交互模拟：日程详情列表颜色渲染 ===');
+  const detailItems = Array.from(wdoc.querySelectorAll('#scheduleList .schedule-item'));
+  const detailColors = detailItems.map(el => el.style.getPropertyValue('--accent').trim());
+  const detailColorOk = detailItems.length > 0 && detailColors.every(c => c && c.startsWith('#'));
+  console.log(`  详情列表条数           : ${detailItems.length}`);
+  console.log(`  每条 --accent           : ${JSON.stringify(detailColors)}`);
+  console.log(`  结果                   : ${detailColorOk ? 'PASS（详情列表颜色按日程颜色渲染）' : 'FAIL（详情列表颜色未读取）'}`);
 
   // ---------- 交互模拟：设置窗新建日程弹窗 ----------
   console.log('\n=== 交互模拟：设置窗新建日程弹窗 ===');
