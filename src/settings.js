@@ -13,6 +13,15 @@ const pad2 = (n) => String(n).padStart(2, '0');
 
 let editingId = null;
 let editingColor = '#ff6b6b';
+
+// 给弹窗里"颜色"色板（#colorRow span[data-c]）一次性写入 inline background，
+// 避免 CSS 缺 background-color 导致 7 个圆点全透明。
+function initColorSwatches() {
+  $$('#colorRow span').forEach(s => {
+    const c = s.dataset.c;
+    if (c) s.style.backgroundColor = c;
+  });
+}
 let currentFilter = { month: '', keyword: '', done: 'all' };
 
 // ---------- 工具 ----------
@@ -240,6 +249,7 @@ async function saveSchedule() {
 (async function init() {
   await loadConfigToUI();
   bindConfigEvents();
+  initColorSwatches();
 
   // 过滤
   $('#filterMonth').addEventListener('change', (e) => {

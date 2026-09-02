@@ -29,6 +29,15 @@ function todayLocal() {
   const t = new Date();
   return { y: t.getFullYear(), m: t.getMonth() + 1, d: t.getDate() };
 }
+
+// 给弹窗里"颜色"色板（#colorRow span[data-c]）一次性写入 inline background，
+// 避免 CSS 缺 background-color 导致 7 个圆点全透明（截图里只剩 .active 描边）。
+function initColorSwatches() {
+  $$('#colorRow span').forEach(s => {
+    const c = s.dataset.c;
+    if (c) s.style.backgroundColor = c;
+  });
+}
 function fmtTodayStr() {
   const t = todayLocal();
   return fmtDate(t.y, t.m, t.d);
@@ -421,6 +430,7 @@ function showHint(text) {
   state.selected = state.todayStr;
 
   renderWeekdays(state.config.weekStartsOn ?? 1);
+  initColorSwatches();
   bindEvents();
   await renderCalendar();
   await renderDayDetail();
