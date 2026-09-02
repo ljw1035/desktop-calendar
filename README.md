@@ -67,7 +67,7 @@ npm start
 ### 从 Releases 下载
 
 1. 打开仓库主页 → 点右侧 **Releases**（或 https://github.com/ljw1035/desktop-calendar/releases）
-2. 找到最新版本，在 **Assets** 下下载 `桌面日历-win32-x64.zip`（约 106MB）
+2. 找到最新版本，在 **Assets** 下下载 `desktop-calendar-win32-x64.zip`（约 106MB）
 3. 解压后进入 `桌面日历-win32-x64/` 文件夹，**双击 `桌面日历.exe` 即可运行**，无需安装
 
 > Windows SmartScreen 可能提示「Windows 保护你的电脑 / 未知发布者」——本应用未做代码签名。
