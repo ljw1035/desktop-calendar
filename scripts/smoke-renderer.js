@@ -42,6 +42,7 @@ const sampleConfig = {
   theme: 'glacier', startWithSystem: false,
   alwaysOnTop: true, clickThrough: false,
   toggleShortcut: 'CommandOrControl+Shift+C',
+  clickThroughShortcut: 'CommandOrControl+Alt+P',  // v1.1.2
 };
 
 function makeApiStub(record) {
@@ -67,6 +68,10 @@ function makeApiStub(record) {
       onChange: (cb) => { record.cbs.push('config.onChange'); record.handlers.config.push(cb); },
       onShortcutOk: (cb) => { record.cbs.push('config.onShortcutOk'); record.handlers.shortcutOk.push(cb); },
       onShortcutError: (cb) => { record.cbs.push('config.onShortcutError'); record.handlers.shortcutError.push(cb); },
+      // v1.1.2：穿透开关快捷键的 ok/error/toggled 事件
+      onClickThroughShortcutOk: (cb) => { record.cbs.push('config.onClickThroughShortcutOk'); record.handlers.clickThroughShortcutOk.push(cb); },
+      onClickThroughShortcutError: (cb) => { record.cbs.push('config.onClickThroughShortcutError'); record.handlers.clickThroughShortcutError.push(cb); },
+      onClickThroughShortcutToggled: (cb) => { record.cbs.push('config.onClickThroughShortcutToggled'); record.handlers.clickThroughShortcutToggled.push(cb); },
     },
     data: { onChange: (cb) => { record.cbs.push('data.onChange'); record.handlers.data.push(cb); } },
     window: {
@@ -119,7 +124,7 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
     };
   }
 
-  const record = { cbs: [], configSets: [], handlers: { config: [], data: [], focus: [], shortcutOk: [], shortcutError: [] } };
+  const record = { cbs: [], configSets: [], handlers: { config: [], data: [], focus: [], shortcutOk: [], shortcutError: [], clickThroughShortcutOk: [], clickThroughShortcutError: [], clickThroughShortcutToggled: [] } };
   window.api = makeApiStub(record);
 
   const loadErrors = [];
@@ -188,6 +193,22 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
     const todos = d.querySelectorAll('#todoList > *').length;
     const title = ((d.querySelector('#monthTitle') || {}).textContent || '').trim();
     const meta = ((d.querySelector('#monthMeta') || {}).textContent || '').trim();
+    // v1.1.3：左上角 brand 已删除
+    const brandGone = !d.querySelector('.brand');
+    // v1.1.3：topbar（色底卡）已存在，并承载今日 pill + 月份标题 + 4 个图标
+    const topbar = !!d.querySelector('#topbar.topbar');
+    // v1.1.3：月份切换箭头在 .topbar-mid 内
+    const prevInTopbar = !!d.querySelector('.topbar-mid #btnPrev');
+    const nextInTopbar = !!d.querySelector('.topbar-mid #btnNext');
+    // v1.1.3：今日 pill 在 .topbar-left 内
+    const todayInLeft = !!d.querySelector('.topbar-left #btnToday.today-pill');
+    // v1.1.3：4 个图标全在 .topbar-right 内
+    const rightBtnIds = ['btnSettings', 'btnToggle', 'btnHide', 'btnClose'];
+    const rightBtnsOk = rightBtnIds.every((id) => !!d.querySelector('.topbar-right #' + id));
+    // v1.1.3：拖拽：整 widget (body) 是 drag，按钮子树是 no-drag（只在 .topbar-left/.topbar-right 里）
+    const leftHasNoDrag = (d.querySelector('.topbar-left') || {}).classList && d.querySelector('.topbar-left').classList.contains('no-drag');
+    const rightHasNoDrag = (d.querySelector('.topbar-right') || {}).classList && d.querySelector('.topbar-right').classList.contains('no-drag');
+    const noDragRuleOnBtn = !!(leftHasNoDrag && rightHasNoDrag);
     // 色板已渲染 inline 背景（每个 span 应有非空 backgroundColor），否则视为渲染异常
     const swatches = Array.from(d.querySelectorAll('#colorRow span'));
     const swatchesRendered = swatches.length > 0 && swatches.every(s => s.style.backgroundColor && s.style.backgroundColor !== 'rgba(0, 0, 0, 0)' && s.style.backgroundColor !== 'transparent');
@@ -200,6 +221,13 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
       { label: '待办已渲染（桩数据 2 条）', ok: todos === 2, detail: `实际 ${todos} 条` },
       { label: '月份标题已填充', ok: title.length > 0, detail: JSON.stringify(title) },
       { label: '农历/节日信息已填充', ok: meta.length > 0, detail: JSON.stringify(meta.slice(0, 40)) },
+      { label: 'v1.1.3 左上角 brand 已删除', ok: brandGone, detail: brandGone ? '.brand 不再存在' : '.brand 仍渲染' },
+      { label: 'v1.1.3 topbar（顶部色底卡）已存在', ok: topbar, detail: topbar ? '#topbar 存在并渲染 .topbar' : '#topbar 缺失' },
+      { label: 'v1.1.3 月份左切换箭头在 .topbar-mid 内', ok: prevInTopbar, detail: prevInTopbar ? 'btnPrev 已迁入 topbar-mid' : 'btnPrev 不在 .topbar-mid' },
+      { label: 'v1.1.3 月份右切换箭头在 .topbar-mid 内', ok: nextInTopbar, detail: nextInTopbar ? 'btnNext 已迁入 topbar-mid' : 'btnNext 不在 .topbar-mid' },
+      { label: 'v1.1.3 今日按钮以 today-pill 形式在 topbar-left 内', ok: todayInLeft, detail: todayInLeft ? '#btnToday 已在 topbar-left 内' : '#btnToday 缺少 topbar-left / today-pill' },
+      { label: 'v1.1.3 4 个图标（设置/穿透/隐藏/关闭）都在 topbar-right', ok: rightBtnsOk, detail: rightBtnsOk ? 'btnSettings/btnToggle/btnHide/btnClose 全部就位' : 'topbar-right 图标缺失' },
+      { label: 'v1.1.3 topbar 左右两侧按钮由 .no-drag 包裹', ok: noDragRuleOnBtn, detail: noDragRuleOnBtn ? '.no-drag 包住按钮子树' : '.no-drag 缺失，按钮点击会触发拖拽' },
       { label: '颜色色板已渲染 inline 背景', ok: swatchesRendered, detail: swatchesRendered ? `7 个色板背景色均已写入` : `渲染异常，可能仍是透明状态` },
       { label: 'widget 端 #todoInput 已移除', ok: todoInputGone, detail: todoInputGone ? '新增入口已迁到设置窗' : '#todoInput 仍在 widget 中' },
       { label: '待办卡片可见（有数据时）', ok: todoCardVisible, detail: todoCardVisible ? '.todos-card 可见' : '.todos-card 被意外隐藏' },
@@ -218,6 +246,9 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
     // 快捷键输入框已回填为默认 Ctrl+Shift+C
     const scInput = d.querySelector('#shortcut');
     const scVal = scInput ? scInput.value : '(元素缺失)';
+    // v1.1.2：第二个快捷键（穿透开关）也应回填为 Ctrl+Alt+P
+    const sc2Input = d.querySelector('#shortcut2');
+    const sc2Val = sc2Input ? sc2Input.value : '(元素缺失)';
     return [
       { label: '日程表格已渲染（桩数据：3 条日程，daily 5 个 occurrence 已合并）', ok: rows === 3, detail: `实际 ${rows} 行` },
       { label: '待办已渲染（桩数据 2 条）', ok: todos === 2, detail: `实际 ${todos} 条` },
@@ -225,6 +256,7 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
       { label: '宽度滑块已回填(760)', ok: wd && Number(wd.value) === 760, detail: `width=${wd ? wd.value : '?'}` },
       { label: '开关状态已回填', ok: /alwaysOnTop=true/.test(checks) && /showLunar=true/.test(checks), detail: checks },
       { label: '快捷键输入框已回填(Ctrl+Shift+C)', ok: scVal === 'Ctrl+Shift+C', detail: `shortcut=${scVal}` },
+      { label: 'v1.1.2 穿透开关快捷键已回填(Ctrl+Alt+P)', ok: sc2Val === 'Ctrl+Alt+P', detail: `shortcut2=${sc2Val}` },
     ];
   });
 
@@ -312,22 +344,23 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
   console.log(`  非重复日程无 ×N 标记    : ${!hasCountBadge(1) && !hasCountBadge(2)}`);
   console.log(`  结果                   : ${dedupeOk ? 'PASS（合并 + 计数正常）' : 'FAIL（重复日程未合并或标记丢失）'}`);
 
-  // ---------- 交互模拟：穿透模式左键退出（替换旧右键方案） ----------
-  console.log('\n=== 交互模拟：穿透模式点击 widget 任意位置退出 ===');
-  const wdoc2 = a.window.document;
-  // 把 config 切到 clickThrough=true，再触发 mousedown，验证会调用 config.set({ clickThrough: false })
-  a.record.handlers.config.forEach((cb) => cb({ ...sampleConfig, clickThrough: true }));
-  await new Promise((r) => setTimeout(r, 100));
-  const beforeToggle = a.record.configSets.length;
-  const md = new a.window.MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
-  wdoc2.dispatchEvent(md);
-  await new Promise((r) => setTimeout(r, 100));
-  const toggleCalls = a.record.configSets.slice(beforeToggle);
-  const exitCalled = toggleCalls.some((p) => p && p.clickThrough === false);
-  console.log(`  穿透状态下触发 mousedown : ${!!md}`);
-  console.log(`  config.set 调用次数       : ${toggleCalls.length}`);
-  console.log(`  包含 clickThrough=false   : ${exitCalled}`);
-  console.log(`  结果                      : ${exitCalled ? 'PASS（穿透左键可退出）' : 'FAIL（点击未触发退出）'}`);
+  // ---------- 交互模拟：v1.1.2 穿透开关快捷键录制 ----------
+  console.log('\n=== 交互模拟：v1.1.2 穿透开关快捷键录制 ===');
+  const sc2 = sdoc.querySelector('#shortcut2');
+  const before2 = b.record.configSets.length;
+  sc2.click();
+  sc2.dispatchEvent(new b.window.KeyboardEvent('keydown', {
+    code: 'KeyX', key: 'x', ctrlKey: true, altKey: true, shiftKey: true, bubbles: true, cancelable: true,
+  }));
+  await new Promise((r) => setTimeout(r, 120));
+  const ctSetCalled = b.record.configSets.slice(before2).some(p => p && p.clickThroughShortcut === 'CommandOrControl+Alt+Shift+X');
+  b.record.handlers.clickThroughShortcutOk.forEach((cb) => cb('CommandOrControl+Alt+Shift+X'));
+  await new Promise((r) => setTimeout(r, 120));
+  const sc2Shown = sdoc.querySelector('#shortcut2').value;
+  const ctRecOk = ctSetCalled && sc2Shown === 'Ctrl+Alt+Shift+X';
+  console.log(`  config.set 收到 clickThroughShortcut : ${ctSetCalled}`);
+  console.log(`  ok 后输入框显示                      : ${sc2Shown}（期望 Ctrl+Alt+Shift+X）`);
+  console.log(`  结果                                 : ${ctRecOk ? 'PASS（穿透快捷键录制可用）' : 'FAIL'}`);
 
   // ---------- 交互模拟：自定义切换快捷键录制 ----------
   console.log('\n=== 交互模拟：录制新的切换快捷键 ===');
@@ -359,7 +392,7 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
     console.log('未处理的 Promise 拒绝：');
     unhandled.forEach((u) => console.log('  ✗ ' + u));
   }
-  const allOk = a.ok && b.ok && toggleOk && repOk && sRepOk && dedupeOk && exitCalled && recOk && unhandled.length === 0;
+  const allOk = a.ok && b.ok && toggleOk && repOk && sRepOk && dedupeOk && recOk && ctRecOk && unhandled.length === 0;
   console.log(allOk ? '渲染层冒烟测试通过 ✓' : '渲染层冒烟测试发现问题 ✗');
   process.exit(allOk ? 0 : 1);
 })();

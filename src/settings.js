@@ -14,9 +14,13 @@ const pad2 = (n) => String(n).padStart(2, '0');
 let editingId = null;
 let editingColor = '#ff6b6b';
 
-// 快捷键录制状态
+// 快捷键录制状态（v1.1.2：两个快捷键各一份独立录制态）
 let shortcutRecording = false;
 let shortcutPendingAcc = null;   // 正在等待用户确认的组合（本地合法但尚未应用）
+const shortcutState = {
+  toggle: { recording: false, pending: null },
+  clickThrough: { recording: false, pending: null },
+};
 
 // 给弹窗里"颜色"色板（#colorRow span[data-c]）一次性写入 inline background，
 // 避免 CSS 缺 background-color 导致 7 个圆点全透明。
@@ -50,10 +54,15 @@ async function loadConfigToUI() {
   $('#showTodos').checked    = cfg.showTodos !== false;
   $('#startWithSystem').checked = !!cfg.startWithSystem;
   // 快捷键：输入框显示友好格式，data-acc 存真实 accelerator（供回退显示）
-  const sc = cfg.toggleShortcut || window.accelerator.DEFAULT_SHORTCUT;
-  $('#shortcut').value = window.accelerator.formatAccelerator(sc);
-  $('#shortcut').dataset.acc = sc;
-  setShortcutStatus('当前：' + window.accelerator.formatAccelerator(sc), '');
+  syncShortcutInput(cfg, 'toggleShortcut', 'shortcut');
+  setShortcutStatus('当前：' + window.accelerator.formatAccelerator(cfg.toggleShortcut || window.accelerator.DEFAULT_SHORTCUT), '');
+  // v1.1.2：第二个快捷键（穿透开关）
+  syncShortcutInput(cfg, 'clickThroughShortcut', 'shortcut2');
+  const el2 = $('#shortcutStatus2');
+  if (el2) {
+    el2.textContent = '当前：' + window.accelerator.formatAccelerator(cfg.clickThroughShortcut || window.accelerator.DEFAULT_CLICK_THROUGH_SHORTCUT);
+    el2.className = 'shortcut-status';
+  }
   $$('input[name="weekStart"]').forEach(r => r.checked = (Number(r.value) === (cfg.weekStartsOn ?? 1)));
   $$('input[name="theme"]').forEach(r => r.checked = (r.value === (cfg.theme || 'glacier')));
   $('#filterMonth').value = todayMonth();
@@ -61,6 +70,135 @@ async function loadConfigToUI() {
 }
 
 // ---------- 快捷键自定义 ----------
+
+/**
+ * v1.1.2：通用快捷键录制器
+ *
+ * params = {
+ *   inputId:        输入框元素 id
+ *   statusId:       状态文字 span id
+ *   configKey:      配置里的字段名（'toggleShortcut' | 'clickThroughShortcut'）
+ *   okEvent:        渲染层监听的成功 IPC（config.onShortcutOk | config.onClickThroughShortcutOk）
+ *   errorEvent:     失败 IPC
+ *   setPending:     主进程 IPC：config:set partial，把 configKey 写进去
+ *   defaultAcc:     失败回退 / "恢复默认" 按钮用的 default
+ * }
+ *
+ * 之所以抽成函数：两个快捷键（toggleShortcut / clickThroughShortcut）的事件管线一模一样。
+ */
+function bindShortcutCaptureRow(params) {
+  const input  = $('#' + params.inputId);
+  const status = $('#' + params.statusId);
+  const setStatus = (text, type) => {
+    if (!status) return;
+    status.textContent = text;
+    status.className = 'shortcut-status' + (type ? ' ' + type : '');
+  };
+  const syncFrom = (cfg) => {
+    const sc = (cfg && cfg[params.configKey]) || params.defaultAcc;
+    input.value = window.accelerator.formatAccelerator(sc);
+    input.dataset.acc = sc;
+  };
+
+  const exitRecord = () => {
+    params.state.recording = false;
+    params.state.pending = null;
+    input.classList.remove('recording');
+    input.blur();
+    // 恢复显示当前生效值（pending 未应用 → 显生效值）
+    syncFrom(cfgCache);
+    setStatus('点击方框后按下新组合键（Esc 取消）', '');
+  };
+
+  input.addEventListener('click', () => {
+    params.state.recording = true;
+    input.classList.add('recording');
+    input.value = '';
+    input.placeholder = '请按下组合键…';
+    setStatus('请按下新的组合键（只按修饰键则继续等待主键）', '');
+  });
+  input.addEventListener('blur', () => {
+    if (params.state.recording) exitRecord();
+  });
+  input.addEventListener('keydown', async (e) => {
+    if (!params.state.recording) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.code === 'Escape') { exitRecord(); return; }
+
+    const { accelerator, reason } = window.accelerator.keydownToAccelerator(e);
+    if (!accelerator && !reason) {
+      input.value = '';
+      input.placeholder = window.accelerator.formatAccelerator(
+        [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Win']
+          .filter(Boolean).join('+')) + ' + …';
+      return;
+    }
+    if (!accelerator) {
+      setStatus(reason || '该组合无效，请重试', 'err');
+      input.value = '';
+      input.placeholder = '请再按一次组合键…';
+      return;
+    }
+
+    params.state.pending = accelerator;
+    input.value = window.accelerator.formatAccelerator(accelerator);
+    input.placeholder = '点击方框后按下快捷键…';
+    try {
+      await params.setPending(accelerator);
+    } catch (err) {
+      params.state.recording = false;
+      input.classList.remove('recording');
+      syncFrom(cfgCache);
+      setStatus('保存失败：' + (err && err.message), 'err');
+    }
+  });
+
+  // "恢复默认"
+  const resetBtn = document.querySelector('[data-reset-target="' + params.inputId + '"]');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', async () => {
+      input.value = window.accelerator.formatAccelerator(params.defaultAcc);
+      input.dataset.acc = params.defaultAcc;
+      try {
+        await params.setPending(params.defaultAcc);
+      } catch (err) {
+        setStatus('保存失败：' + (err && err.message), 'err');
+      }
+    });
+  }
+
+  // 成功：直接用事件携带的 accelerator 刷新输入框（不依赖 cfgCache 时序）
+  params.okEvent((acc) => {
+    params.state.recording = false;
+    params.state.pending = null;
+    input.classList.remove('recording');
+    input.value = window.accelerator.formatAccelerator(acc);
+    input.dataset.acc = acc;
+    if (cfgCache) cfgCache = { ...cfgCache, [params.configKey]: acc };
+    setStatus('✓ 已生效：' + window.accelerator.formatAccelerator(acc), 'ok');
+  });
+  // 失败：从主进程拉最新 config 回填（最可靠）
+  params.errorEvent(async (msg) => {
+    params.state.recording = false;
+    params.state.pending = null;
+    input.classList.remove('recording');
+    const fresh = await window.api.config.get();
+    cfgCache = fresh;
+    syncFrom(fresh);
+    setStatus('⚠ ' + msg + '（已保留原快捷键）', 'err');
+  });
+}
+
+// 同步快捷键输入框（从 cfg 拉数据；轻量工具）
+function syncShortcutInput(cfg, configKey, inputId) {
+  const el = $('#' + inputId);
+  if (!el) return;
+  const sc = (cfg && cfg[configKey]) || '';
+  el.value = window.accelerator.formatAccelerator(sc);
+  el.dataset.acc = sc;
+}
+
 function setShortcutStatus(text, type) {
   // type: '' 普通 / 'ok' 成功 / 'err' 失败
   const el = $('#shortcutStatus');
@@ -71,94 +209,33 @@ function setShortcutStatus(text, type) {
 
 // 从当前生效值刷新快捷键输入框（失败回滚后 / 加载时用）
 function syncShortcutFromConfig(cfg) {
-  const sc = (cfg && cfg.toggleShortcut) || window.accelerator.DEFAULT_SHORTCUT;
-  $('#shortcut').value = window.accelerator.formatAccelerator(sc);
-  $('#shortcut').dataset.acc = sc;
+  if (!cfg) return;
+  if (cfg.toggleShortcut !== undefined) syncShortcutInput(cfg, 'toggleShortcut', 'shortcut');
+  if (cfg.clickThroughShortcut !== undefined) syncShortcutInput(cfg, 'clickThroughShortcut', 'shortcut2');
 }
 
-// 绑定快捷键录制交互
+// 绑定快捷键录制交互：v1.1.2 两个录制项都用 bindShortcutCaptureRow 统一驱动
 function bindShortcutCapture() {
-  const input = $('#shortcut');
-
-  const exitRecord = () => {
-    shortcutRecording = false;
-    input.classList.remove('recording');
-    input.blur();
-    // 恢复显示当前生效值（本地可能已暂存 pending，但未应用 → 仍显生效值）
-    syncShortcutFromConfigCache();
-    setShortcutStatus('点击方框后按下新组合键', '');
-  };
-
-  input.addEventListener('click', () => {
-    shortcutRecording = true;
-    input.classList.add('recording');
-    input.value = '';
-    input.placeholder = '请按下组合键…';
-    setShortcutStatus('请按下新的组合键（只按修饰键则继续等待主键）', '');
+  bindShortcutCaptureRow({
+    inputId:     'shortcut',
+    statusId:    'shortcutStatus',
+    configKey:   'toggleShortcut',
+    state:       shortcutState.toggle,
+    defaultAcc:  window.accelerator.DEFAULT_SHORTCUT,
+    setPending:  (acc) => window.api.config.set({ toggleShortcut: acc }),
+    okEvent:     (cb) => window.api.config.onShortcutOk(cb),
+    errorEvent:  (cb) => window.api.config.onShortcutError(cb),
   });
-
-  input.addEventListener('blur', () => {
-    if (shortcutRecording) exitRecord();
+  bindShortcutCaptureRow({
+    inputId:     'shortcut2',
+    statusId:    'shortcutStatus2',
+    configKey:   'clickThroughShortcut',
+    state:       shortcutState.clickThrough,
+    defaultAcc:  window.accelerator.DEFAULT_CLICK_THROUGH_SHORTCUT,
+    setPending:  (acc) => window.api.config.set({ clickThroughShortcut: acc }),
+    okEvent:     (cb) => window.api.config.onClickThroughShortcutOk(cb),
+    errorEvent:  (cb) => window.api.config.onClickThroughShortcutError(cb),
   });
-
-  input.addEventListener('keydown', async (e) => {
-    if (!shortcutRecording) return;
-    e.preventDefault();
-    e.stopPropagation();
-
-    // Esc 取消
-    if (e.code === 'Escape') { exitRecord(); return; }
-
-    const { accelerator, reason } = window.accelerator.keydownToAccelerator(e);
-    // 纯修饰键按下（未完成）→ 继续等主键，仅更新提示
-    if (!accelerator && !reason) {
-      input.value = '';
-      input.placeholder = window.accelerator.formatAccelerator(
-        [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Win']
-          .filter(Boolean).join('+')) + ' + …';
-      return;
-    }
-    // 本地非法（如单独字母、未知键）→ 留在录制，给提示，等下一个键
-    if (!accelerator) {
-      setShortcutStatus(reason || '该组合无效，请重试', 'err');
-      input.value = '';
-      input.placeholder = '请再按一次组合键…';
-      return;
-    }
-
-    // 本地合法：先显示出来，并尝试应用
-    shortcutPendingAcc = accelerator;
-    input.value = window.accelerator.formatAccelerator(accelerator);
-    input.placeholder = '点击方框后按下快捷键…';
-
-    // 交给主进程注册（阻塞等待）。结果由 shortcut:ok / shortcut:error 事件驱动收尾。
-    // 这里不清空 recording，避免 config:changed 在失败回滚前先把 UI 刷走。
-    shortcutPendingAcc = accelerator;
-    try {
-      await window.api.config.set({ toggleShortcut: accelerator });
-    } catch (err) {
-      shortcutRecording = false;
-      input.classList.remove('recording');
-      syncShortcutFromConfigCache();
-      setShortcutStatus('保存失败：' + (err && err.message), 'err');
-    }
-  });
-
-  // "恢复默认"按钮
-  $('#btnShortcutReset').addEventListener('click', async () => {
-    const d = window.accelerator.DEFAULT_SHORTCUT;
-    input.value = window.accelerator.formatAccelerator(d);
-    input.dataset.acc = d;
-    try {
-      await window.api.config.set({ toggleShortcut: d });
-    } catch (err) {
-      setShortcutStatus('保存失败：' + (err && err.message), 'err');
-    }
-  });
-
-  // 主进程回执：注册成功（无 error 时手动收尾）
-  // —— 用一个定时器 + pending 标记，在 config:set 返回后若未收到 shortcut:error 则视为成功
-  return input;
 }
 
 // 当前生效 config 缓存（供 syncShortcutFromConfigCache 使用）
@@ -167,39 +244,25 @@ function syncShortcutFromConfigCache() {
   if (cfgCache) syncShortcutFromConfig(cfgCache);
 }
 
-// 绑定快捷键相关的主进程事件（成功/失败/外部变化）
+// 监听 config:changed 广播（外部触发 / 回滚后）→ 同步两个快捷键输入框
 function bindShortcutEvents() {
-  const input = $('#shortcut');
-  // 任何 config 变化 → 同步输入框（含：主进程回滚后广播的 config）
   window.api.config.onChange((cfg) => {
-    const prevAcc = cfgCache ? cfgCache.toggleShortcut : null;
+    const prev = cfgCache;
     cfgCache = cfg;
-    const changed = cfg.toggleShortcut !== prevAcc;
-    if (!shortcutRecording && changed) {
-      syncShortcutFromConfig(cfg);
+    // 任一快捷键字段变化且当前没有在录制 → 刷新
+    const ts = (cfg.toggleShortcut || '') !== (prev?.toggleShortcut || '');
+    const cs = (cfg.clickThroughShortcut || '') !== (prev?.clickThroughShortcut || '');
+    if (ts && !shortcutState.toggle.recording) {
+      syncShortcutInput(cfg, 'toggleShortcut', 'shortcut');
       setShortcutStatus('当前：' + window.accelerator.formatAccelerator(cfg.toggleShortcut || window.accelerator.DEFAULT_SHORTCUT), '');
     }
-  });
-  // 快捷键注册失败（被回滚）：重新拉一次最新 config 回填输入框（最可靠）
-  window.api.config.onShortcutError(async (msg) => {
-    shortcutRecording = false;
-    input.classList.remove('recording');
-    shortcutPendingAcc = null;
-    const fresh = await window.api.config.get();
-    cfgCache = fresh;
-    syncShortcutFromConfig(fresh);
-    setShortcutStatus('⚠ ' + msg + '（已保留原快捷键）', 'err');
-  });
-  // 快捷键注册成功：直接用事件携带的 accelerator 刷新输入框（不依赖 cfgCache，解耦广播时序）
-  window.api.config.onShortcutOk((acc) => {
-    shortcutRecording = false;
-    shortcutPendingAcc = null;
-    input.classList.remove('recording');
-    input.value = window.accelerator.formatAccelerator(acc);
-    input.dataset.acc = acc;
-    // 同步本地缓存，避免后续依赖 cfgCache 的地方读到旧值
-    if (cfgCache) cfgCache = { ...cfgCache, toggleShortcut: acc };
-    setShortcutStatus('✓ 已生效：' + window.accelerator.formatAccelerator(acc), 'ok');
+    if (cs && !shortcutState.clickThrough.recording) {
+      const el2 = $('#shortcutStatus2');
+      if (el2) {
+        el2.textContent = '当前：' + window.accelerator.formatAccelerator(cfg.clickThroughShortcut || window.accelerator.DEFAULT_CLICK_THROUGH_SHORTCUT);
+        el2.className = 'shortcut-status';
+      }
+    }
   });
 }
 

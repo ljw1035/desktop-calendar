@@ -73,7 +73,7 @@
         </label>
         <label class="toggle">
           <input type="checkbox" id="clickThrough" />
-          <span>鼠标穿透（勾选后小组件不接收鼠标，点击小组件任意位置关闭）</span>
+          <span>鼠标穿透（开启后只能用下面的"穿透开关快捷键"退出）</span>
         </label>
         <label class="toggle">
           <input type="checkbox" id="showLunar" />
@@ -97,8 +97,25 @@
           <input type="text" id="shortcut" readonly autocomplete="off"
                  placeholder="点击后按下快捷键…（Esc 取消）"
                  title="点击后用键盘按下想设置的组合键" />
-          <button type="button" id="btnShortcutReset" class="mini-btn" title="恢复为默认 Ctrl+Shift+C">恢复默认</button>
+          <button type="button" data-reset-target="shortcut" class="mini-btn" title="恢复为默认 Ctrl+Shift+C">恢复默认</button>
         </div>
+      </div>
+
+      <!-- v1.1.2：第二个全局快捷键 —— 切换鼠标穿透开关 -->
+      <div class="form-group">
+        <label>穿透开关快捷键
+          <span class="shortcut-status" id="shortcutStatus2" style="font-weight:400;">点击方框后按下新组合键</span>
+        </label>
+        <div class="shortcut-box">
+          <input type="text" id="shortcut2" readonly autocomplete="off"
+                 placeholder="点击后按下快捷键…（Esc 取消）"
+                 title="用于一键切换鼠标穿透模式开关" />
+          <button type="button" data-reset-target="shortcut2" class="mini-btn" title="恢复为默认 Ctrl+Alt+P">恢复默认</button>
+        </div>
+        <p style="font-size:11px;color:var(--txt-faint);margin:6px 0 0;line-height:1.5;">
+          穿透模式下小组件不接收任何鼠标事件（图标、日期格、右键均失效）。
+          想退出穿透时请按上方设置的快捷键，或来这里/托盘菜单取消勾选。
+        </p>
       </div>
 
       <div class="form-group">

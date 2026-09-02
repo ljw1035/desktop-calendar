@@ -316,33 +316,28 @@ function bindEvents() {
     state.selected = state.todayStr;
     renderCalendar();
     renderDayDetail();
+    // v1.1.2：跳到今月后给"今日"按钮一个短暂高亮反馈（视觉确认已切回）
+    const pill = $('#btnToday');
+    if (pill) {
+      pill.classList.remove('muted');
+      pill.animate(
+        [{ transform: 'scale(1)' }, { transform: 'scale(1.08)' }, { transform: 'scale(1)' }],
+        { duration: 240, easing: 'ease-out' }
+      );
+    }
   });
   $('#btnSettings').addEventListener('click', () => window.api.window.openSettings());
   $('#btnToggle').addEventListener('click', async () => {
     const cfg = await window.api.config.get();
     const next = !cfg.clickThrough;
     await window.api.config.set({ clickThrough: next });
-    showHint(next ? '已开启鼠标穿透（点击小组件任意位置关闭）' : '已关闭鼠标穿透');
+    showHint(next ? '已开启鼠标穿透（按设置的快捷键 / 设置窗 / 托盘菜单退出）' : '已关闭鼠标穿透');
   });
   $('#btnHide').addEventListener('click', () => window.api.window.hide());
   $('#btnClose').addEventListener('click', () => window.api.window.close());
 
   // 待办新增入口已迁到设置窗（widget 端的 #todoInput 已删除，避免与设置窗重复导致状态不一致）
-
-  // 穿透模式：任意点击（包括左键、右键、中键）都退出穿透。鼠标穿透 + { forward:false } 时
-  // webContents 仍能收到 mousedown/mouseup，渲染层在这里拦截第一个事件并退出穿透；
-  // 右键（contextmenu）默认行为是被屏蔽的（prepend 到 OS 系统菜单），改由左键接管更直觉。
-  const exitClickThrough = async (e) => {
-    if (!state.config || !state.config.clickThrough) return;
-    e.preventDefault();
-    e.stopPropagation();
-    await window.api.config.set({ clickThrough: false });
-    showHint('已退出鼠标穿透');
-  };
-  window.addEventListener('mousedown', exitClickThrough, true);   // capture: 早于其他监听器
-  window.addEventListener('contextmenu', (e) => {
-    if (state.config && state.config.clickThrough) e.preventDefault();
-  });
+  // v1.1.2：移除了 v1.1.1 的"穿透模式下任意点击退出"逻辑。退出穿透由独立快捷键 / 设置窗 / 托盘菜单三种入口接管。
 
   // 详情
   $('#btnAddSchedule').addEventListener('click', () => openScheduleModal(state.selected));
@@ -489,6 +484,11 @@ function showHint(text) {
       }, 100);
     }
   });
+
+  // v1.1.2：监听主进程通过全局快捷键切换穿透的广播，弹气泡提示
+  window.api.config.onClickThroughShortcutToggled((next) => {
+    showHint(next ? '已开启鼠标穿透（再按一次退出）' : '已退出鼠标穿透');
+  });
 })();
 
 function applyConfigToUI() {
@@ -501,4 +501,11 @@ function applyConfigToUI() {
   document.body.classList.toggle('no-lunar', !showLunar);
   const meta = $('#monthMeta');
   if (meta) meta.style.display = showLunar ? '' : 'none';
+
+  // v1.1.2：当前页面已经在今月 → "今天"按钮 muted，避免误点重复跳
+  const pill = $('#btnToday');
+  if (pill) {
+    const t = todayLocal();
+    pill.classList.toggle('muted', state.year === t.y && state.month === t.m);
+  }
 }

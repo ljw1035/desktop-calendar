@@ -43,6 +43,23 @@ const api = {
       ipcRenderer.on('shortcut:error', fn);
       return () => ipcRenderer.removeListener('shortcut:error', fn);
     },
+    // v1.1.2：穿透开关快捷键的成功/失败事件，独立管线
+    onClickThroughShortcutOk: (cb) => {
+      const fn = (_e, acc) => cb(acc);
+      ipcRenderer.on('clickThroughShortcut:ok', fn);
+      return () => ipcRenderer.removeListener('clickThroughShortcut:ok', fn);
+    },
+    onClickThroughShortcutError: (cb) => {
+      const fn = (_e, msg) => cb(msg);
+      ipcRenderer.on('clickThroughShortcut:error', fn);
+      return () => ipcRenderer.removeListener('clickThroughShortcut:error', fn);
+    },
+    // 主进程通过全局快捷键切换穿透状态后，广播给 widget 显示提示
+    onClickThroughShortcutToggled: (cb) => {
+      const fn = (_e, next) => cb(next);
+      ipcRenderer.on('clickThroughShortcut:toggled', fn);
+      return () => ipcRenderer.removeListener('clickThroughShortcut:toggled', fn);
+    },
   },
   data: {
     // 数据变化通知：日程/待办被任意窗口改动后广播

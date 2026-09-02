@@ -13,6 +13,8 @@
 
 // 默认切换快捷键（Windows / Linux = Ctrl，macOS = Cmd）
 const DEFAULT_SHORTCUT = 'CommandOrControl+Shift+C';
+// v1.1.2：默认"切换鼠标穿透"的快捷键
+const DEFAULT_CLICK_THROUGH_SHORTCUT = 'CommandOrControl+Alt+P';
 
 // e.code 的"主键名" → Electron accelerator 键名
 const CODE_TO_KEY = {
@@ -113,8 +115,8 @@ function formatAccelerator(acc) {
 
 // UMD 风格导出：Node（单元测试）用 module.exports，浏览器（settings.js）挂到 window 全局
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { DEFAULT_SHORTCUT, keydownToAccelerator, formatAccelerator };
+  module.exports = { DEFAULT_SHORTCUT, DEFAULT_CLICK_THROUGH_SHORTCUT, keydownToAccelerator, formatAccelerator };
 }
 if (typeof window !== 'undefined') {
-  window.accelerator = { DEFAULT_SHORTCUT, keydownToAccelerator, formatAccelerator };
+  window.accelerator = { DEFAULT_SHORTCUT, DEFAULT_CLICK_THROUGH_SHORTCUT, keydownToAccelerator, formatAccelerator };
 }

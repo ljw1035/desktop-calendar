@@ -132,7 +132,8 @@ const DEFAULT_CONFIG = {
   theme: 'glacier',              // glacier / inkblot / rose
   // 系统
   startWithSystem: false,
-  toggleShortcut: 'CommandOrControl+Shift+C',   // 全局快捷键：切换小组件显示/隐藏（可在设置自定义）
+  toggleShortcut: 'CommandOrControl+Shift+C',          // 全局快捷键：切换小组件显示/隐藏（可在设置自定义）
+  clickThroughShortcut: 'CommandOrControl+Alt+P',      // v1.1.2：全局快捷键：切换鼠标穿透开关（可在设置自定义）
 };
 
 function loadConfig() {
@@ -187,7 +188,7 @@ function createWidgetWindow() {
     },
   });
 
-  widgetWin.setIgnoreMouseEvents(config.clickThrough, { forward: config.clickThrough });
+  widgetWin.setIgnoreMouseEvents(config.clickThrough, { forward: true });   // v1.1.2 改回 forward:true，widget 整体不接收事件；穿透状态由独立全局快捷键 Ctrl+Alt+P 切换
   widgetWin.loadFile(path.join(APP_DIR, 'src', 'widget.html'));
 
   // 被其他窗口盖过后重新显示时，主动回到最前，避免输入失效
@@ -287,10 +288,8 @@ function buildTrayIcon() {
   return nativeImage.createFromBitmap(buf, { width: size, height: size });
 }
 
-function createTray() {
-  tray = new Tray(buildTrayIcon());
-  tray.setToolTip('桌面日历小组件');
-  tray.setContextMenu(Menu.buildFromTemplate([
+function buildTrayTemplate() {
+  return [
     {
       label: '显示/隐藏小组件',
       click: () => {
@@ -301,13 +300,16 @@ function createTray() {
     { type: 'separator' },
     { label: '打开设置', click: () => createSettingsWindow() },
     {
-      label: '穿透模式（点击关闭）',
+      // v1.1.2：穿透开关的快捷键已在设置窗可自定义，这里只显示"由快捷键 / 菜单 / 设置窗控制"的提示，
+      // 不再硬编码 "Ctrl+Alt+P" 在 label 上（用户改了之后会误导）。
+      label: '穿透模式',
       type: 'checkbox',
       checked: config.clickThrough,
       click: (item) => {
         config.clickThrough = item.checked;
-        if (widgetWin) widgetWin.setIgnoreMouseEvents(config.clickThrough, { forward: !config.clickThrough });
+        if (widgetWin) widgetWin.setIgnoreMouseEvents(config.clickThrough, { forward: true });
         saveConfig(config);
+        if (widgetWin) widgetWin.webContents.send('config:changed', config);
       },
     },
     {
@@ -322,7 +324,13 @@ function createTray() {
     },
     { type: 'separator' },
     { label: '退出', click: () => app.quit() },
-  ]));
+  ];
+}
+
+function createTray() {
+  tray = new Tray(buildTrayIcon());
+  tray.setToolTip('桌面日历小组件');
+  tray.setContextMenu(Menu.buildFromTemplate(buildTrayTemplate()));
 }
 
 // ---------- IPC：日程 ----------
@@ -483,7 +491,7 @@ ipcMain.handle('config:set', (_e, partial) => {
   if (widgetWin) {
     if (partial.opacity !== undefined) widgetWin.setOpacity(partial.opacity);
     if (partial.alwaysOnTop !== undefined) widgetWin.setAlwaysOnTop(!!partial.alwaysOnTop);
-    if (partial.clickThrough !== undefined) widgetWin.setIgnoreMouseEvents(!!partial.clickThrough, { forward: !partial.clickThrough });
+    if (partial.clickThrough !== undefined) widgetWin.setIgnoreMouseEvents(!!partial.clickThrough, { forward: true });
     // 重置位置：x/y 传 null 时立即移回屏幕右上角默认位置
     if (partial.x === null || partial.y === null) {
       const display = screen.getPrimaryDisplay().workArea;
@@ -535,10 +543,31 @@ ipcMain.handle('config:set', (_e, partial) => {
     }
   }
 
+  // v1.1.2：穿透开关快捷键与 toggleShortcut 完全独立的一套注册/回滚管线。
+  let ctShortcutErr = null;
+  if ('clickThroughShortcut' in partial) {
+    const res = registerClickThroughShortcut();
+    if (res.ok) {
+      if (settingsWin && !settingsWin.isDestroyed()) {
+        settingsWin.webContents.send('clickThroughShortcut:ok', config.clickThroughShortcut);
+      }
+    } else {
+      const fallback = clickThroughShortcutRegistered || 'CommandOrControl+Alt+P';
+      config.clickThroughShortcut = fallback;
+      saveConfig(config);
+      registerClickThroughShortcut();
+      ctShortcutErr = res.reason;
+    }
+  }
+
   // 若快捷键注册失败：先广播回滚后的 config（更新渲染层缓存），再发错误提示
   if (shortcutErr && settingsWin && !settingsWin.isDestroyed()) {
     settingsWin.webContents.send('config:changed', config);
     settingsWin.webContents.send('shortcut:error', shortcutErr);
+  }
+  if (ctShortcutErr && settingsWin && !settingsWin.isDestroyed()) {
+    settingsWin.webContents.send('config:changed', config);
+    settingsWin.webContents.send('clickThroughShortcut:error', ctShortcutErr);
   }
 
   return config;
@@ -577,6 +606,50 @@ function registerToggleShortcut() {
     return { ok: true };
   }
   // 注册失败（可能被系统/其他应用占用，或格式不被 Electron 接受）
+  return { ok: false, reason: `无法注册快捷键 "${acc}"（可能被系统或其他程序占用）` };
+}
+
+/**
+ * v1.1.2：注册"切换鼠标穿透开关"的全局快捷键。
+ * 行为：当前穿透开着 → 关；当前穿透关着 → 开。每次按下给 widget 推 showHint。
+ * 与 registerToggleShortcut 同样的注册/回滚管线，独立键位避免冲突。
+ */
+let clickThroughShortcutRegistered = null;
+
+function toggleClickThrough() {
+  const next = !config.clickThrough;
+  config.clickThrough = next;
+  saveConfig(config);
+  if (widgetWin) widgetWin.setIgnoreMouseEvents(next, { forward: true });
+  // 通知渲染层（widget 显示提示气泡 + 设置窗同步刷新勾选框）
+  if (widgetWin) widgetWin.webContents.send('clickThroughShortcut:toggled', next);
+  if (settingsWin && !settingsWin.isDestroyed()) {
+    settingsWin.webContents.send('config:changed', config);
+  }
+  // 托盘菜单勾选状态同步（菜单是 Menu.buildFromTemplate 创建的，最简单是重建）
+  if (tray) {
+    tray.setContextMenu(Menu.buildFromTemplate(buildTrayTemplate()));
+  }
+}
+
+function registerClickThroughShortcut() {
+  const acc = (config.clickThroughShortcut || '').trim();
+
+  if (clickThroughShortcutRegistered) {
+    globalShortcut.unregister(clickThroughShortcutRegistered);
+    clickThroughShortcutRegistered = null;
+  }
+
+  if (!acc) {
+    return { ok: false, reason: '快捷键不能为空' };
+  }
+
+  const ok = globalShortcut.register(acc, toggleClickThrough);
+
+  if (ok) {
+    clickThroughShortcutRegistered = acc;
+    return { ok: true };
+  }
   return { ok: false, reason: `无法注册快捷键 "${acc}"（可能被系统或其他程序占用）` };
 }
 
@@ -727,6 +800,8 @@ app.whenReady().then(() => {
 
   // 全局快捷键：切换小组件显示/隐藏（accelerator 可在设置里自定义）
   registerToggleShortcut();
+  // v1.1.2：全局快捷键：切换鼠标穿透（accelerator 可在设置里自定义）
+  registerClickThroughShortcut();
 
   // 启动日程提醒轮询（每 30 秒检查一次）
   checkReminders();
