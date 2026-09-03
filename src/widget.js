@@ -282,6 +282,60 @@ async function renderTodos() {
 function escapeText(s) { return String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
 function escapeAttr(s) { return escapeText(s).replace(/"/g, '&quot;'); }
 
+// ---------- v1.1.4：手动拖拽移动窗口 ----------
+// 背景：body 设了 -webkit-app-region: drag 后，Electron 会把该区域的鼠标事件拿去拖窗口，
+//       DOM 收不到 click —— 日历格子、待办勾选、日程按钮全部"看得见点不着"。
+// 所以交互元素统一改成 no-drag（见 widget.css），拖拽改由这里用 pointer 事件手动实现：
+//   位移 < 4px  → 不拖，鼠标抬起时正常派发 click（点日历/待办照常工作）
+//   位移 ≥ 4px  → 判定为拖窗口，并且吞掉随后那一下 click，避免"拖完手一松就误选日期"
+const DRAG_THRESHOLD = 4;
+let suppressNextClick = false;
+
+function setupManualDrag() {
+  let ctx = null;
+
+  document.body.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;                                   // 只响应左键
+    if (e.target.closest('.rz')) return;                          // 边缘缩放热区自己处理
+    // 真正的控件（按钮/输入/链接/弹层）不启动拖拽，交给它们自己的 click
+    if (e.target.closest('button, input, select, textarea, a, .modal-mask')) return;
+    ctx = { x: e.screenX, y: e.screenY, moved: false, el: e.target, id: e.pointerId };
+    try { e.target.setPointerCapture?.(e.pointerId); } catch (_) {}
+  });
+
+  document.body.addEventListener('pointermove', (e) => {
+    if (!ctx) return;
+    const dx = e.screenX - ctx.x, dy = e.screenY - ctx.y;
+    if (!ctx.moved) {
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;            // 还没到阈值，当作点击
+      ctx.moved = true;
+      window.api.drag.start(ctx.x, ctx.y);
+    }
+    window.api.drag.move(e.screenX, e.screenY);
+  });
+
+  const finish = (e) => {
+    if (!ctx) return;
+    if (ctx.moved) {
+      window.api.drag.end();
+      suppressNextClick = true;                                   // 吞掉拖拽尾随的 click
+      setTimeout(() => { suppressNextClick = false; }, 0);        // 兜底：没派发 click 也要复位
+    }
+    try { ctx.el?.releasePointerCapture?.(ctx.id); } catch (_) {}
+    ctx = null;
+  };
+  document.body.addEventListener('pointerup', finish);
+  document.body.addEventListener('pointercancel', finish);
+
+  // capture 阶段拦截，比 .day 自己身上的 click 监听更早，能真正阻止它
+  document.addEventListener('click', (e) => {
+    if (!suppressNextClick) return;
+    suppressNextClick = false;
+    e.stopPropagation();
+    e.preventDefault();
+  }, true);
+}
+
 // ---------- 事件绑定 ----------
 function bindEvents() {
   // 边缘拖拽缩放（无边框窗口）：按下手柄记录起点，pointermove 持续上报屏幕坐标。
@@ -305,7 +359,12 @@ function bindEvents() {
     });
   });
   // 保险：窗口失焦（如拖拽中弹窗/切窗）立即结束缩放
-  window.addEventListener('blur', () => window.api.resize.end());
+  window.addEventListener('blur', () => {
+    window.api.resize.end();
+    window.api.drag.end();
+  });
+
+  setupManualDrag();
 
   // 月份切换
   $('#btnPrev').addEventListener('click', () => moveMonth(-1));

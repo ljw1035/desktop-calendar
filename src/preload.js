@@ -81,6 +81,12 @@ const api = {
     move:  (sx, sy)       => ipcRenderer.send('widget:resizeMove', sx, sy),
     end:   ()             => ipcRenderer.send('widget:resizeEnd'),
   },
+  drag: {
+    // v1.1.4：手动拖拽移动窗口（交互元素 no-drag 后靠它保住"整 widget 可拖"）
+    start: (sx, sy) => ipcRenderer.send('widget:dragStart', sx, sy),
+    move:  (sx, sy) => ipcRenderer.send('widget:dragMove', sx, sy),
+    end:   ()       => ipcRenderer.send('widget:dragEnd'),
+  },
 };
 
 contextBridge.exposeInMainWorld('api', api);

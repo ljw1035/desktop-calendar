@@ -718,6 +718,35 @@ ipcMain.on('widget:resizeEnd', () => {
   resizeCtx = null;
 });
 
+// v1.1.4：手动拖拽移动窗口。
+// 背景：body 设了 -webkit-app-region: drag 后，Electron 会吞掉该区域所有 click，
+//       日历/待办/日程就点不动了；所以把这些交互元素改成 no-drag，拖拽改由渲染层
+//       用 pointer 事件 + IPC 手动实现（位移超过阈值才拖，否则仍算点击）。
+// 与 resize 同构：start 记录窗口起点与鼠标起点，move 按位移 setPosition，end 落盘。
+let dragCtx = null;
+
+ipcMain.on('widget:dragStart', (_e, sx, sy) => {
+  if (!widgetWin || widgetWin.isDestroyed()) return;
+  dragCtx = { startBounds: widgetWin.getBounds(), startMouse: { x: sx, y: sy }, moved: false };
+});
+ipcMain.on('widget:dragMove', (_e, sx, sy) => {
+  if (!dragCtx || !widgetWin || widgetWin.isDestroyed()) return;
+  const { startBounds: b, startMouse: m } = dragCtx;
+  dragCtx.moved = true;
+  widgetWin.setPosition(
+    Math.round(b.x + (sx - m.x)),
+    Math.round(b.y + (sy - m.y))
+  );
+});
+ipcMain.on('widget:dragEnd', () => {
+  if (dragCtx && widgetWin && !widgetWin.isDestroyed()) {
+    const b = widgetWin.getBounds();
+    config.x = b.x; config.y = b.y;   // 位置落盘，重启后保持
+    saveConfig(config);
+  }
+  dragCtx = null;
+});
+
 // ---------- IPC：窗口控制 ----------
 ipcMain.handle('window:close', () => widgetWin?.close());
 ipcMain.handle('window:hide', () => widgetWin?.hide());

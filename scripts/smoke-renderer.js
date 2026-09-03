@@ -78,6 +78,15 @@ function makeApiStub(record) {
       close: async () => {}, hide: async () => {},
       openSettings: async () => {}, toggleDevTools: async () => {},
     },
+    resize: {
+      start: () => {}, move: () => {}, end: () => {},
+    },
+    // v1.1.4：手动拖拽（记录调用序列，供"点击/拖拽不冲突"用例断言）
+    drag: {
+      start: (x, y) => record.dragCalls.push(`start:${x},${y}`),
+      move:  (x, y) => record.dragCalls.push(`move:${x},${y}`),
+      end:   ()     => record.dragCalls.push('end'),
+    },
   };
 }
 
@@ -124,7 +133,7 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
     };
   }
 
-  const record = { cbs: [], configSets: [], handlers: { config: [], data: [], focus: [], shortcutOk: [], shortcutError: [], clickThroughShortcutOk: [], clickThroughShortcutError: [], clickThroughShortcutToggled: [] } };
+  const record = { cbs: [], configSets: [], dragCalls: [], handlers: { config: [], data: [], focus: [], shortcutOk: [], shortcutError: [], clickThroughShortcutOk: [], clickThroughShortcutError: [], clickThroughShortcutToggled: [] } };
   window.api = makeApiStub(record);
 
   const loadErrors = [];
@@ -385,6 +394,91 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
   console.log(`  状态提示                      : ${statusEl ? statusEl.textContent : '(缺失)'}`);
   console.log(`  结果                          : ${recOk ? 'PASS（快捷键录制可用）' : 'FAIL'}`);
 
+  // ---------- 交互模拟：v1.1.4 日历格子点击有效（回归：body 的 app-region:drag 会吞掉 click） ----------
+  console.log('\n=== 交互模拟：v1.1.4 日历格子点击有效 ===');
+  const days = Array.from(wdoc.querySelectorAll('#days .day'));
+  // 先清掉已有选中态，确保下面的变化确实由本次点击产生
+  days.forEach((d) => d.classList.remove('selected'));
+  const targetDay = days[Math.min(10, days.length - 1)];
+  const beforeSelected = wdoc.querySelector('#days .day.selected');
+  targetDay.click();
+  await new Promise((r) => setTimeout(r, 150));
+  const afterSelected = wdoc.querySelector('#days .day.selected');
+  const detailShown = wdoc.querySelector('#dayDetail') && !wdoc.querySelector('#dayDetail').hidden;
+  const selOk = !!beforeSelected === false
+             && !!afterSelected
+             && afterSelected.dataset.date === targetDay.dataset.date
+             && !!detailShown;
+  console.log(`  日历格子总数           : ${days.length}`);
+  console.log(`  点击的日期             : ${targetDay.dataset.date}`);
+  console.log(`  点击后被选中的日期     : ${afterSelected ? afterSelected.dataset.date : '(无)'}`);
+  console.log(`  详情面板展开           : ${!!detailShown}`);
+  console.log(`  结果                   : ${selOk ? 'PASS（日历格子可点、可选中、可展开详情）' : 'FAIL（日历点击无效）'}`);
+
+  // ---------- 交互模拟：v1.1.4 手动拖拽（位移阈值 4px，且拖完不误触发点击） ----------
+  console.log('\n=== 交互模拟：v1.1.4 手动拖拽与点击互不干扰 ===');
+  const dragTarget = wdoc.querySelector('#days .day') || wdoc.body;
+  const pd = (type, x, y) => dragTarget.dispatchEvent(new a.window.PointerEvent(type, {
+    bubbles: true, cancelable: true, button: 0, pointerId: 1, screenX: x, screenY: y,
+  }));
+
+  // ① 小位移（2px，小于阈值 4px）：应判定为点击，不触发拖拽
+  a.record.dragCalls.length = 0;
+  pd('pointerdown', 100, 100);
+  pd('pointermove', 102, 101);
+  pd('pointerup', 102, 101);
+  await new Promise((r) => setTimeout(r, 60));
+  const smallMoveCalls = a.record.dragCalls.length;
+  const smallMoveOk = smallMoveCalls === 0;
+  console.log(`  ① 位移 2px（< 阈值）   : drag 调用 ${smallMoveCalls} 次（期望 0，应视为点击）`);
+  console.log(`     结果               : ${smallMoveOk ? 'PASS（小幅抖动不会误拖窗口）' : 'FAIL'}`);
+
+  // ② 大位移（20px，超过阈值）：应触发 start → move → end
+  a.record.dragCalls.length = 0;
+  pd('pointerdown', 100, 100);
+  pd('pointermove', 120, 100);
+  pd('pointerup', 120, 100);
+  await new Promise((r) => setTimeout(r, 60));
+  const calls = a.record.dragCalls.slice();
+  const dragOk = calls.some((c) => c.startsWith('start:'))
+              && calls.some((c) => c.startsWith('move:'))
+              && calls.includes('end');
+  console.log(`  ② 位移 20px（> 阈值）  : ${JSON.stringify(calls)}`);
+  console.log(`     结果               : ${dragOk ? 'PASS（超阈值正常拖窗口并落盘）' : 'FAIL'}`);
+
+  // ③ 拖拽结束后尾随的那一下 click 必须被吞掉，否则"拖完手一松就误选日期"
+  a.record.dragCalls.length = 0;
+  const selBeforeDrag = wdoc.querySelector('#days .day.selected');
+  const selDateBeforeDrag = selBeforeDrag ? selBeforeDrag.dataset.date : null;
+  pd('pointerdown', 100, 100);
+  pd('pointermove', 130, 100);
+  pd('pointerup', 130, 100);
+  targetDay.dispatchEvent(new a.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+  await new Promise((r) => setTimeout(r, 60));
+  const selAfterDrag = wdoc.querySelector('#days .day.selected');
+  const selDateAfterDrag = selAfterDrag ? selAfterDrag.dataset.date : null;
+  const suppressOk = selDateAfterDrag === selDateBeforeDrag;
+  console.log(`  ③ 拖拽尾随 click        : 选中日期 ${selDateBeforeDrag} → ${selDateAfterDrag}（期望不变）`);
+  console.log(`     结果               : ${suppressOk ? 'PASS（拖拽不会误触发选中）' : 'FAIL（拖拽尾随 click 未被抑制）'}`);
+
+  const dragAllOk = smallMoveOk && dragOk && suppressOk;
+
+  // ---------- 静态检查：drag 区域内交互元素必须有 no-drag（本次 bug 的根因，防回归） ----------
+  console.log('\n=== 静态检查：app-region drag 区域内的交互元素已声明 no-drag ===');
+  const cssText = fs.readFileSync(path.join(SRC, 'widget.css'), 'utf8');
+  const bodyIsDrag = /body\s*\{[^}]*-webkit-app-region:\s*drag/s.test(cssText);
+  // 取出 body 之后所有规则里，凡是选择器命中交互元素却没有 no-drag 的，都算风险
+  const requiredSelectors = ['.day', 'button', 'input', 'select', 'textarea', '.todo-check', '.schedule-item', '.rz'];
+  const missing = requiredSelectors.filter((sel) => {
+    // 形如: 选择器 ... { ... -webkit-app-region: no-drag; ... }
+    const re = new RegExp(`(^|[,{}\\s])${sel.replace('.', '\\.')}([\\s,:{][^}]*\\{[^}]*-webkit-app-region:\\s*no-drag|[^}]*\\{[^}]*-webkit-app-region:\\s*no-drag)`, 'm');
+    return !re.test(cssText);
+  });
+  const cssOk = bodyIsDrag && missing.length === 0;
+  console.log(`  body 为 drag 区域       : ${bodyIsDrag}（true 时下面的检查才有意义）`);
+  console.log(`  缺 no-drag 的选择器     : ${missing.length ? JSON.stringify(missing) : '无'}`);
+  console.log(`  结果                   : ${cssOk ? 'PASS（交互元素均已 no-drag，click 不会被拖拽吞掉）' : 'FAIL（存在被 drag 吞 click 的风险）'}`);
+
   await new Promise((r) => setTimeout(r, 200));
 
   console.log('\n=== 汇总 ===');
@@ -392,7 +486,9 @@ function runCase(label, htmlFile, jsFiles, assertFn) {
     console.log('未处理的 Promise 拒绝：');
     unhandled.forEach((u) => console.log('  ✗ ' + u));
   }
-  const allOk = a.ok && b.ok && toggleOk && repOk && sRepOk && dedupeOk && recOk && ctRecOk && unhandled.length === 0;
+  const allOk = a.ok && b.ok && toggleOk && repOk && sRepOk && dedupeOk && recOk && ctRecOk
+             && selOk && dragAllOk && cssOk
+             && unhandled.length === 0;
   console.log(allOk ? '渲染层冒烟测试通过 ✓' : '渲染层冒烟测试发现问题 ✗');
   process.exit(allOk ? 0 : 1);
 })();

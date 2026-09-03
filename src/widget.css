@@ -76,6 +76,19 @@ body {
 /* 不参与拖拽的子树（按钮/输入等交互元素） */
 .no-drag, .no-drag * { -webkit-app-region: no-drag; }
 
+/* v1.1.4 关键修复：body 是 drag 区域时，Electron 会吞掉该区域内所有 click 事件
+   （drag 区域的鼠标事件被用于拖窗口，不再派发给 DOM）。
+   因此所有需要点击的元素必须显式 no-drag，否则会出现"看得见点不着"。
+   拖拽由 widget.js 的 pointer 手动拖拽接管（见 setupManualDrag），不依赖 app-region。 */
+button, input, select, textarea, a, label,
+.day, .day *,
+.todo-check, .todo-del,
+.schedule-item, .schedule-item *,
+.day-event, .day-event-more,
+.rz {
+  -webkit-app-region: no-drag;
+}
+
 /* 通用图标按钮（设置/穿透/隐藏/关闭等） */
 .icon-btn {
   width: 30px; height: 30px;
